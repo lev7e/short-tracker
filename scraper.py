@@ -1,51 +1,60 @@
 """
 SHORT RADAR — scraper.py
-Çalışma zamanı: GitHub Actions, hafta içi 07:00 UTC (02:00 ET, premarket'ten 2 saat önce)
+Çalışma: GitHub Actions, hafta içi 07:00 UTC
 
 Veri kaynakları:
-  1. Chartexchange   — C2B, short volume, SI, float tarayıcısı
-  2. Nasdaq          — RegSHO threshold listesi
-  3. StockAnalysis   — Reverse split (recent + upcoming)
-  4. Finviz          — Insider alım/satım
-  5. SEC EDGAR       — S-1/S-1-A başvuruları (son 30 gün)
-  6. FINRA           — Short interest (ayda 2 kez)
-  7. SEC EDGAR XBRL  — Float, shares outstanding, warrant bilgisi
+  1. Chartexchange   — C2B, short volume  (session + cookie simülasyonu)
+  2. FINRA           — RegSHO threshold + short interest (CDN, doğrudan TXT)
+  3. StockAnalysis   — Reverse split listesi
+  4. Finviz          — Insider işlemleri
+  5. SEC EDGAR EFTS  — S-1 / S-1/A başvuruları
+  6. SEC EDGAR XBRL  — Float, warrant verisi
+
+Her kaynak için başarı/başarısızlık meta.json'a kaydedilir.
+Kaynak başarısız olursa eski dosya korunur (veri kaybı olmaz).
 """
 
-import re
 import csv
 import json
-import math
 import os
+import re
 import time
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 
 import requests
 from bs4 import BeautifulSoup
 
-# ── Dizin ──────────────────────────────────────
+# ── Dizinler ────────────────────────────────────
 OUTPUT_DIR = "data"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-# ── Headers ────────────────────────────────────
-HEADERS = {
+# ── Headers ─────────────────────────────────────
+BROWSER_HEADERS = {
     "User-Agent": (
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
         "AppleWebKit/537.36 (KHTML, like Gecko) "
         "Chrome/124.0.0.0 Safari/537.36"
     ),
-    "Accept": "application/json, text/html,application/xhtml+xml,*/*;q=0.8",
     "Accept-Language": "en-US,en;q=0.9",
-}
-# SEC: kendi politikası gereği e-posta içeren UA zorunlu
-SEC_HEADERS = {
-    "User-Agent": "ShortRadar research contact@example.com",
-    "Accept": "application/json",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Connection":      "keep-alive",
 }
 
-# ── Yardımcı ───────────────────────────────────
+# SEC kendi politikası gereği e-posta içeren UA zorunlu
+SEC_HEADERS = {
+    "User-Agent": "ShortRadar research contact@example.com",
+    "Accept":     "application/json",
+}
+
+# ── Kaynak durumu (meta.json için) ───────────────
+SOURCE_STATUS = {}   # {"chartexchange": "ok"/"error:...", ...}
+
+
+# ════════════════════════════════════════════════
+# YARDIMCI FONKSİYONLAR
+# ════════════════════════════════════════════════
+
 def load_existing(filename: str):
-    """Mevcut JSON dosyasını okur; yoksa ya da bozuksa None döner."""
     path = os.path.join(OUTPUT_DIR, filename)
     if not os.path.exists(path):
         return None
@@ -58,41 +67,31 @@ def load_existing(filename: str):
 
 def save(filename: str, data, min_records: int = 1) -> bool:
     """
-    Veriyi kaydeder. Güvenlik kuralları:
-      - data boş liste/dict ise eski dosyayı KORUR (fetch başarısız olmuştur).
-      - min_records'tan az kayıt varsa eski dosyayı KORUR.
-      - Başarılı yazımda True, korunan durumda False döner.
-    Bu sayede kısmi scraper hatası tüm veriyi silmez.
+    Güvenli kayıt: yeterli veri yoksa eski dosyayı korur, False döner.
     """
-    path    = os.path.join(OUTPUT_DIR, filename)
-    is_list = isinstance(data, list)
-    n       = len(data) if isinstance(data, (list, dict)) else 1
-
-    # Güvenlik: yeterli kayıt yoksa eski dosyayı koru
-    if is_list and n < min_records:
-        old = load_existing(filename)
+    n = len(data) if isinstance(data, (list, dict)) else 1
+    if isinstance(data, list) and n < min_records:
+        old   = load_existing(filename)
         old_n = len(old) if isinstance(old, list) else 0
-        print(f"  ⚠  {filename} — {n} kayıt ({min_records} eşiğinin altında). "
+        print(f"  ⚠  {filename} — {n} kayıt < eşik {min_records}. "
               f"Eski dosya korundu ({old_n} kayıt).")
         return False
-
+    path = os.path.join(OUTPUT_DIR, filename)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, default=str)
-    print(f"  ✓ {path}  ({n} kayıt)")
+    print(f"  ✓  {path}  ({n} kayıt)")
     return True
 
 
 def save_meta(data: dict) -> None:
-    """meta.json her zaman yazılır (scraper durumu burada izlenir)."""
     path = os.path.join(OUTPUT_DIR, "meta.json")
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, default=str)
-    print(f"  ✓ {path}")
+    print(f"  ✓  {path}")
 
 
 def to_float(val, default=None):
-    """Güvenli float dönüşümü: None, "-", "%" karakterleri temizler."""
-    if val is None or val == "-" or val == "":
+    if val is None or val in ("-", ""):
         return default
     try:
         return float(str(val).replace("%", "").replace(",", ".").strip())
@@ -102,9 +101,8 @@ def to_float(val, default=None):
 
 def parse_split_ratio(ratio_str: str):
     """
-    "1 for 20", "1-for-20.5", "1:25", "0.05 for 1" → bölen (float)
-    Reverse split için bölen = eski / yeni  (örn. 20.0)
-    Forward split için None döner (zaten bizi ilgilendirmiyor).
+    "1 for 20" / "1-for-20.5" / "1:25" → bölen float.
+    Reverse split ise bölen döner, forward split ise None.
     """
     if not ratio_str:
         return None
@@ -115,13 +113,10 @@ def parse_split_ratio(ratio_str: str):
     new_, old_ = float(m.group(1)), float(m.group(2))
     if new_ == 0:
         return None
-    if old_ > new_:          # reverse split
-        return round(old_ / new_, 4)
-    return None              # forward split → ilgilenmiyoruz
+    return round(old_ / new_, 4) if old_ > new_ else None
 
 
 def normalize_date(raw: str) -> str:
-    """Çeşitli tarih formatlarını YYYY-MM-DD'ye çevirir."""
     if not raw:
         return ""
     raw = raw.strip()
@@ -134,11 +129,53 @@ def normalize_date(raw: str) -> str:
     return raw
 
 
-# ══════════════════════════════════════════════
-# 1. CHARTEXCHANGE — C2B + Short Volume + SI
-# ══════════════════════════════════════════════
+def workdays_back(n: int):
+    """Son n iş gününün tarihlerini YYYYMMDD formatında üretir."""
+    today = datetime.now()
+    days  = []
+    d     = today
+    while len(days) < n:
+        if d.weekday() < 5:
+            days.append(d.strftime("%Y%m%d"))
+        d -= timedelta(days=1)
+    return days
+
+
+# ════════════════════════════════════════════════
+# 1. CHARTEXCHANGE — C2B + Short Volume
+# ════════════════════════════════════════════════
 def fetch_chartexchange() -> list:
-    print("\n[1/7] Chartexchange taranıyor...")
+    """
+    Chartexchange JSON screener.
+    Session cookie alınarak bot filtresi aşılır.
+    403 veya boş yanıt → eski dosya korunur.
+    """
+    print("\n[1/6] Chartexchange C2B taranıyor...")
+
+    session = requests.Session()
+    session.headers.update({
+        **BROWSER_HEADERS,
+        "Accept": "text/html,application/xhtml+xml,*/*;q=0.9",
+        "Upgrade-Insecure-Requests": "1",
+    })
+
+    # Ana sayfayı ziyaret et → session cookie + Cloudflare/bot bypass
+    try:
+        resp = session.get("https://chartexchange.com/", timeout=20)
+        print(f"    Ana sayfa: HTTP {resp.status_code}, "
+              f"cookie: {bool(session.cookies)}")
+        time.sleep(2)
+    except Exception as e:
+        print(f"    Ana sayfa uyarısı (devam): {e}")
+
+    COLS = (
+        "display,borrow_fee_rate_ib,borrow_fee_avail_ib,"
+        "shares_float,market_cap,reg_price,reg_change_pct,reg_volume,"
+        "10_day_avg_vol,shortvol_all_short,shortvol_all_short_pct,"
+        "shortint_db_pct,shortint_pct,shortint_position_change_pct,"
+        "shortvol_all_short_pct_30d,pre_price,pre_change_pct"
+    )
+
     all_rows, page = [], 1
     while True:
         url = (
@@ -150,116 +187,257 @@ def fetch_chartexchange() -> list:
             "&reg_price=%3C6,%3E0.8"
             "&borrow_fee_avail_ib=%3C100000"
             "&per_page=100"
-            "&view_cols=display,borrow_fee_rate_ib,borrow_fee_avail_ib,"
-            "shares_float,market_cap,reg_price,reg_change_pct,reg_volume,"
-            "10_day_avg_vol,shortvol_all_short,shortvol_all_short_pct,"
-            "shortint_db_pct,shortint_pct,shortint_position_change_pct,"
-            "shortvol_all_short_pct_30d,pre_price,pre_change_pct"
+            f"&view_cols={COLS}"
             "&sort=borrow_fee_rate_ib,desc"
             "&format=json"
         )
         try:
-            r = requests.get(url, headers=HEADERS, timeout=30)
+            r = session.get(url, timeout=30, headers={
+                "Accept":           "application/json, */*; q=0.01",
+                "X-Requested-With": "XMLHttpRequest",
+                "Referer":          "https://chartexchange.com/screener/",
+            })
+            print(f"    Sayfa {page}: HTTP {r.status_code}, "
+                  f"{len(r.text)} byte")
+
+            if r.status_code == 403:
+                print("    403 Forbidden — IP bloklu, eski veri korunacak")
+                SOURCE_STATUS["chartexchange"] = "error:403_blocked"
+                break
+            if r.status_code != 200:
+                print(f"    HTTP {r.status_code} — içerik: {r.text[:200]}")
+                SOURCE_STATUS["chartexchange"] = f"error:http_{r.status_code}"
+                break
+
             data = r.json()
             rows = data.get("data", data) if isinstance(data, dict) else data
-            if not rows:
+            if not isinstance(rows, list) or not rows:
+                print(f"    Boş yanıt: {str(data)[:300]}")
+                SOURCE_STATUS["chartexchange"] = "error:empty_response"
                 break
+
             all_rows.extend(rows)
+            print(f"    +{len(rows)} satır, toplam {len(all_rows)}")
             if len(rows) < 100:
                 break
             page += 1
-            time.sleep(0.3)
+            time.sleep(0.7)
         except Exception as e:
-            print(f"    Hata (sayfa {page}): {e}")
+            print(f"    İstisna (sayfa {page}): {e}")
+            SOURCE_STATUS["chartexchange"] = f"error:{e}"
             break
+
+    if all_rows:
+        SOURCE_STATUS["chartexchange"] = f"ok:{len(all_rows)}"
     save("chartexchange.json", all_rows, min_records=10)
     return all_rows
 
 
-# ══════════════════════════════════════════════
-# 2. NASDAQ — RegSHO Threshold Listesi
-# ══════════════════════════════════════════════
-def fetch_regsho() -> list:
-    print("\n[2/7] Nasdaq RegSHO çekiliyor...")
-    url = "https://nasdaqtrader.com/Trader.aspx?id=RegSHOThreshold"
-    try:
-        r = requests.get(url, headers=HEADERS, timeout=30)
-        soup = BeautifulSoup(r.text, "html.parser")
-        csv_url = None
-        for link in soup.find_all("a", href=True):
-            href = link["href"]
-            if "RegSHOThreshold" in href and ".txt" in href:
-                csv_url = ("https://nasdaqtrader.com" + href
-                           if href.startswith("/") else href)
-                break
-        rows = []
-        if csv_url:
-            r2 = requests.get(csv_url, headers=HEADERS, timeout=30)
-            reader = csv.DictReader(r2.text.strip().split("\n"), delimiter="|")
-            for row in reader:
-                if row.get("Symbol") and row["Symbol"] != "Symbol":
-                    rows.append(dict(row))
-        else:
-            table = soup.find("table", {"class": "nasdaqTable"}) or soup.find("table")
-            if table:
-                hdrs = [th.text.strip() for th in table.find_all("th")]
-                for tr in table.find_all("tr")[1:]:
-                    cells = [td.text.strip() for td in tr.find_all("td")]
-                    if cells and len(cells) == len(hdrs):
-                        rows.append(dict(zip(hdrs, cells)))
-        save("regsho.json", rows, min_records=1)
+# ════════════════════════════════════════════════
+# 2. FINRA — RegSHO Threshold + Short Interest
+#    (aynı CDN, farklı dosya türleri)
+# ════════════════════════════════════════════════
+def _parse_pipe_txt(text: str, source_label: str) -> list:
+    """Pipe-delimited TXT dosyasını dict listesine çevirir."""
+    rows  = []
+    lines = [l for l in text.strip().split("\n") if l.strip()]
+    if len(lines) < 2:
         return rows
-    except Exception as e:
-        print(f"    Hata: {e}")
-        save("regsho.json", [], min_records=1)
-        return []
+    hdrs = [h.strip() for h in lines[0].split("|")]
+    for line in lines[1:]:
+        parts = [p.strip() for p in line.split("|")]
+        if not parts or not parts[0] or parts[0].lower() in ("symbol",""):
+            continue
+        row = dict(zip(hdrs, parts))
+        # Symbol normalize
+        if "Symbol" not in row:
+            row["Symbol"] = parts[0]
+        row["_source"] = source_label
+        rows.append(row)
+    return rows
 
 
-# ══════════════════════════════════════════════
-# 3. STOCK ANALYSIS — Reverse Splits
-# ══════════════════════════════════════════════
-def fetch_splits() -> list:
-    print("\n[3/7] Split listesi çekiliyor (recent + upcoming)...")
+def fetch_regsho() -> list:
+    """
+    RegSHO threshold listesi.
+    Birden fazla kaynak ve tarih dener.
+
+    URL'ler (öncelik sırasına göre):
+      1. FINRA CDN daily threshold: cdn.finra.org/equity/regsho/daily/...
+      2. NASDAQ Trader dynamic TXT: nasdaqtrader.com/dynamic/symdir/regsho/...
+    """
+    print("\n[2/6] RegSHO threshold listesi çekiliyor...")
     rows = []
-    for label, url in {
+
+    # ── Kaynak 1: FINRA CDN (en güvenilir, doğrudan S3-benzeri CDN) ──
+    # Format: threshold{YYYYMMDD}.txt  veya  FINRAthreshold{YYYYMMDD}.txt
+    finra_patterns = [
+        "https://cdn.finra.org/equity/regsho/daily/threshold{d}.txt",
+        "https://cdn.finra.org/equity/regsho/daily/FINRAthreshold{d}.txt",
+    ]
+    for date_str in workdays_back(5):
+        if rows:
+            break
+        for pattern in finra_patterns:
+            url = pattern.format(d=date_str)
+            try:
+                r = requests.get(url, headers=BROWSER_HEADERS, timeout=15)
+                print(f"    FINRA threshold {date_str}: HTTP {r.status_code} ({len(r.text)} byte)")
+                if r.status_code == 200 and "|" in r.text and len(r.text) > 50:
+                    parsed = _parse_pipe_txt(r.text, "FINRA")
+                    if parsed:
+                        rows = parsed
+                        print(f"    ✓ FINRA CDN ({date_str}): {len(rows)} ticker")
+                        break
+            except Exception as e:
+                print(f"    FINRA {url}: {e}")
+        time.sleep(0.3)
+
+    # ── Kaynak 2: NASDAQ Trader dynamic ──
+    if not rows:
+        nasdaq_patterns = [
+            "https://www.nasdaqtrader.com/dynamic/symdir/regsho/nasdaqth{d}.txt",
+            "https://nasdaqtrader.com/dynamic/symdir/regsho/nasdaqth{d}.txt",
+        ]
+        for date_str in workdays_back(5):
+            if rows:
+                break
+            for pattern in nasdaq_patterns:
+                url = pattern.format(d=date_str)
+                try:
+                    r = requests.get(url, headers=BROWSER_HEADERS, timeout=15)
+                    print(f"    NASDAQ trader {date_str}: HTTP {r.status_code}")
+                    if r.status_code == 200 and "|" in r.text and len(r.text) > 50:
+                        parsed = _parse_pipe_txt(r.text, "NASDAQ")
+                        if parsed:
+                            rows = parsed
+                            print(f"    ✓ NASDAQ Trader ({date_str}): {len(rows)} ticker")
+                            break
+                except Exception as e:
+                    print(f"    NASDAQ {url}: {e}")
+            time.sleep(0.3)
+
+    if rows:
+        SOURCE_STATUS["regsho"] = f"ok:{len(rows)}"
+    else:
+        print("    ⚠ RegSHO: hiçbir kaynaktan veri alınamadı")
+        SOURCE_STATUS["regsho"] = "error:all_sources_failed"
+
+    save("regsho.json", rows, min_records=1)
+    return rows
+
+
+def fetch_finra_short_interest() -> dict:
+    """
+    FINRA biweekly short interest dosyaları.
+    FNSQ=NASDAQ, FNYS=NYSE, FNOQ=OTC
+    """
+    print("\n[FINRA SI] Short interest çekiliyor...")
+    result   = {}
+    prefixes = [
+        ("FNSQ", "NASDAQ"),
+        ("FNYS", "NYSE"),
+        ("FNOQ", "OTC"),
+    ]
+    for prefix, exchange in prefixes:
+        found = False
+        for date_str in workdays_back(45):   # biweekly → 45 gün yeterli
+            url = f"https://cdn.finra.org/equity/regsho/biweekly/{prefix}{date_str}.txt"
+            try:
+                rh = requests.head(url, headers=BROWSER_HEADERS, timeout=8)
+                if rh.status_code != 200:
+                    continue
+                r = requests.get(url, headers=BROWSER_HEADERS, timeout=30)
+                if r.status_code != 200 or len(r.text) < 100:
+                    continue
+                count = 0
+                for line in r.text.strip().split("\n")[1:]:
+                    parts = line.strip().split("|")
+                    if len(parts) < 3:
+                        continue
+                    ticker = parts[0].strip().upper()
+                    if not ticker or ticker == "SYMBOL":
+                        continue
+                    try:
+                        si = int(str(parts[2]).replace(",", ""))
+                    except Exception:
+                        continue
+                    if ticker not in result or date_str > result[ticker]["si_date"]:
+                        result[ticker] = {
+                            "short_interest": si,
+                            "si_date":        date_str,
+                            "exchange":       exchange,
+                        }
+                    count += 1
+                print(f"    {exchange} ({date_str}): {count} ticker")
+                found = True
+                break
+            except Exception:
+                pass
+            time.sleep(0.05)
+        if not found:
+            print(f"    {exchange}: güncel dosya bulunamadı")
+
+    print(f"    Toplam FINRA SI: {len(result)} ticker")
+    SOURCE_STATUS["finra_si"] = f"ok:{len(result)}" if result else "error:no_data"
+    return result
+
+
+# ════════════════════════════════════════════════
+# 3. STOCK ANALYSIS — Reverse Splits
+# ════════════════════════════════════════════════
+def fetch_splits() -> list:
+    print("\n[3/6] Split listesi çekiliyor...")
+    rows = []
+    pages = {
         "recent":   "https://stockanalysis.com/actions/splits/",
         "upcoming": "https://stockanalysis.com/actions/splits/upcoming/",
-    }.items():
+    }
+    for label, url in pages.items():
         try:
-            r = requests.get(url, headers=HEADERS, timeout=30)
-            soup = BeautifulSoup(r.text, "html.parser")
+            r = requests.get(url, headers=BROWSER_HEADERS, timeout=30)
+            print(f"    {label}: HTTP {r.status_code}")
+            soup  = BeautifulSoup(r.text, "html.parser")
             table = soup.find("table")
             if not table:
+                print(f"    {label}: tablo bulunamadı")
                 continue
             hdrs = [th.text.strip() for th in table.find_all("th")]
             for tr in table.find_all("tr")[1:]:
                 cells = [td.text.strip() for td in tr.find_all("td")]
                 if not cells:
                     continue
-                row = dict(zip(hdrs, cells))
-                ratio_str = row.get("Ratio") or row.get("Split Ratio", "")
-                ratio = parse_split_ratio(ratio_str)
-                raw_date = row.get("Date") or row.get("Split Date", "")
+                row      = dict(zip(hdrs, cells))
+                ratio    = parse_split_ratio(row.get("Ratio") or row.get("Split Ratio",""))
+                raw_date = row.get("Date") or row.get("Split Date","")
                 row["is_reverse"]  = ratio is not None
                 row["split_ratio"] = ratio
                 row["split_date"]  = normalize_date(raw_date)
                 row["list_type"]   = label
                 rows.append(row)
-            time.sleep(0.3)
+            rev = sum(1 for x in rows if x.get("is_reverse") and x.get("list_type")==label)
+            print(f"    {label}: {rev} reverse split")
+            time.sleep(0.4)
         except Exception as e:
-            print(f"    Hata ({label}): {e}")
+            print(f"    {label}: {e}")
+
+    SOURCE_STATUS["splits"] = f"ok:{sum(1 for x in rows if x.get('is_reverse'))}"
     save("splits.json", rows, min_records=1)
     return rows
 
 
-# ══════════════════════════════════════════════
-# 4. FINVIZ — Insider Alım/Satım
-# ══════════════════════════════════════════════
+# ════════════════════════════════════════════════
+# 4. FINVIZ — Insider İşlemleri
+# ════════════════════════════════════════════════
 def fetch_insider() -> list:
-    print("\n[4/7] Finviz insider işlemleri çekiliyor...")
-    url = "https://finviz.com/insidertrading?tc=1"
+    print("\n[4/6] Finviz insider taranıyor...")
     try:
-        r = requests.get(url, headers={**HEADERS, "Referer": "https://finviz.com/"}, timeout=30)
+        r = requests.get(
+            "https://finviz.com/insidertrading?tc=1",
+            headers={**BROWSER_HEADERS, "Referer": "https://finviz.com/"},
+            timeout=30,
+        )
+        print(f"    HTTP {r.status_code}, {len(r.text)} byte")
         soup = BeautifulSoup(r.text, "html.parser")
         rows = []
         for t in soup.find_all("table"):
@@ -271,19 +449,29 @@ def fetch_insider() -> list:
                     if cells and len(cells) >= 4:
                         rows.append(dict(zip(hdrs, cells)))
                 break
+        print(f"    {len(rows)} insider işlem")
+        SOURCE_STATUS["insider"] = f"ok:{len(rows)}"
         save("insider.json", rows, min_records=5)
         return rows
     except Exception as e:
         print(f"    Hata: {e}")
+        SOURCE_STATUS["insider"] = f"error:{e}"
         save("insider.json", [], min_records=5)
         return []
 
 
-# ══════════════════════════════════════════════
-# 5. SEC EDGAR — S-1 / S-1/A başvuruları (son 30 gün)
-# ══════════════════════════════════════════════
+# ════════════════════════════════════════════════
+# 5. SEC EDGAR — S-1 / S-1/A Başvuruları
+# ════════════════════════════════════════════════
 def fetch_sec_s1() -> list:
-    print("\n[5/7] SEC EDGAR S1 başvuruları çekiliyor...")
+    """
+    SEC EDGAR EFTS (full-text search) üzerinden S-1 ve S-1/A başvuruları.
+
+    Önemli: S-1 dosyalayan şirketlerin büyük çoğunluğu henüz borsada işlem
+    görmediğinden ticker alanı BOŞ gelir. Bu beklenen bir durumdur.
+    Şirket adı (company) her zaman dolu olmalıdır.
+    """
+    print("\n[5/6] SEC EDGAR S-1 başvuruları çekiliyor...")
     rows, seen = [], set()
     start = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
     end   = datetime.now().strftime("%Y-%m-%d")
@@ -292,92 +480,65 @@ def fetch_sec_s1() -> list:
         try:
             r = requests.get(
                 "https://efts.sec.gov/LATEST/search-index",
-                params={"forms": form_type, "dateRange": "custom",
-                        "startdt": start, "enddt": end},
-                headers=SEC_HEADERS, timeout=30,
+                params={
+                    "forms":     form_type,
+                    "dateRange": "custom",
+                    "startdt":   start,
+                    "enddt":     end,
+                },
+                headers=SEC_HEADERS,
+                timeout=30,
             )
-            for hit in r.json().get("hits", {}).get("hits", []):
-                src  = hit.get("_source", {})
-                uid  = src.get("entity_name","") + src.get("file_date","")
+            print(f"    {form_type}: HTTP {r.status_code}")
+            if r.status_code != 200:
+                continue
+
+            hits = r.json().get("hits", {}).get("hits", [])
+            print(f"    {form_type}: {len(hits)} hit")
+
+            for hit in hits:
+                s   = hit.get("_source", {})
+                uid = s.get("entity_name","") + s.get("file_date","")
                 if uid in seen:
                     continue
                 seen.add(uid)
-                ticker = src.get("ticker","")
+
+                entity = s.get("entity_name","").strip()
+
+                # Çoğu S-1'de ticker yoktur; bazılarında şirket adında olabilir
+                ticker = ""
+                m = re.search(r"\(proposed[:\s]+([A-Za-z]{1,5})\)", entity, re.IGNORECASE)
+                if m:
+                    ticker = m.group(1).upper()
+
+                edgar_url = (
+                    "https://www.sec.gov/cgi-bin/browse-edgar"
+                    "?action=getcompany"
+                    f"&company={requests.utils.quote(entity)}"
+                    "&type=S-1&dateb=&owner=include&count=10"
+                )
+
                 rows.append({
                     "form":       form_type,
                     "ticker":     ticker,
-                    "company":    src.get("entity_name",""),
-                    "filed_date": src.get("file_date",""),
-                    "edgar_url":  (
-                        "https://www.sec.gov/cgi-bin/browse-edgar"
-                        "?action=getcompany&company="
-                        + requests.utils.quote(src.get("entity_name",""))
-                        + "&type=S-1&dateb=&owner=include&count=10"
-                    ),
+                    "company":    entity,
+                    "filed_date": s.get("file_date",""),
+                    "edgar_url":  edgar_url,
                 })
-            time.sleep(0.3)
+            time.sleep(0.4)
         except Exception as e:
-            print(f"    EDGAR {form_type} hatası: {e}")
+            print(f"    {form_type} hatası: {e}")
+            SOURCE_STATUS[f"s1_{form_type}"] = f"error:{e}"
 
-    print(f"    {len(rows)} başvuru bulundu (son 30 gün)")
+    print(f"    Toplam: {len(rows)} başvuru (son 30 gün)")
+    SOURCE_STATUS["s1"] = f"ok:{len(rows)}"
     save("s1_edgar.json", rows, min_records=1)
     return rows
 
 
-# ══════════════════════════════════════════════
-# 6. FINRA — Short Interest (ayda 2 kez)
-# ══════════════════════════════════════════════
-def fetch_finra_short_interest() -> dict:
-    print("\n[6/7] FINRA short interest çekiliyor...")
-    result    = {}
-    prefixes  = ["FNSQ", "FNYS", "FNOQ"]   # NASDAQ, NYSE, OTC
-    today     = datetime.now()
-
-    for prefix in prefixes:
-        found = False
-        for days_back in range(0, 50):
-            d_str = (today - timedelta(days=days_back)).strftime("%Y%m%d")
-            url   = f"https://cdn.finra.org/equity/regsho/biweekly/{prefix}{d_str}.txt"
-            try:
-                rh = requests.head(url, headers=HEADERS, timeout=6)
-                if rh.status_code != 200:
-                    continue
-                # Dosya bulundu, indir
-                exchange = {"FNSQ":"NASDAQ","FNYS":"NYSE","FNOQ":"OTC"}.get(prefix, prefix)
-                print(f"    {exchange}: {d_str}")
-                r = requests.get(url, headers=HEADERS, timeout=30)
-                for line in r.text.strip().split("\n")[1:]:
-                    parts = line.strip().split("|")
-                    if len(parts) < 3:
-                        continue
-                    ticker = parts[0].strip().upper()
-                    if not ticker or ticker == "SYMBOL":
-                        continue
-                    try:
-                        si = int(str(parts[2]).replace(",",""))
-                    except:
-                        continue
-                    if ticker not in result or d_str > result[ticker]["si_date"]:
-                        result[ticker] = {
-                            "short_interest": si,
-                            "si_date":        d_str,
-                            "exchange":       exchange,
-                        }
-                found = True
-                break
-            except:
-                continue
-            time.sleep(0.05)
-        if not found:
-            print(f"    {prefix} — güncel dosya bulunamadı")
-
-    print(f"    {len(result)} ticker için FINRA SI alındı")
-    return result
-
-
-# ══════════════════════════════════════════════
-# 7. SEC EDGAR XBRL — Float + Warrant + Offering
-# ══════════════════════════════════════════════
+# ════════════════════════════════════════════════
+# 6. SEC EDGAR XBRL — Float + Warrant
+# ════════════════════════════════════════════════
 def _cik_map(tickers: list) -> dict:
     try:
         r = requests.get(
@@ -390,18 +551,19 @@ def _cik_map(tickers: list) -> dict:
             c = str(entry.get("cik_str","")).zfill(10)
             if t:
                 mapping[t] = c
-        return {t: mapping[t.upper()] for t in tickers if t.upper() in mapping}
+        result = {t: mapping[t.upper()] for t in tickers if t.upper() in mapping}
+        print(f"    CIK eşleme: {len(result)}/{len(tickers)}")
+        return result
     except Exception as e:
         print(f"    CIK map hatası: {e}")
         return {}
 
 
 def _latest_xbrl(facts: dict, *concepts) -> tuple:
-    """En güncel XBRL değerini döner: (value, filed_date, form_type)"""
-    priority = {"10-K":0,"10-Q":1,"S-1":2,"S-1/A":3,"8-K":4,"10-K/A":5,"10-Q/A":6}
+    priority = {"10-K":0,"10-Q":1,"S-1":2,"S-1/A":3,"8-K":4}
     for concept in concepts:
-        for ns_key in ["us-gaap","dei"]:
-            node = facts.get("facts",{}).get(ns_key,{}).get(concept,{})
+        for ns in ["us-gaap","dei"]:
+            node = facts.get("facts",{}).get(ns,{}).get(concept,{})
             data = node.get("units",{}).get("shares",
                    node.get("units",{}).get("USD",[]))
             if not data:
@@ -418,25 +580,15 @@ def _latest_xbrl(facts: dict, *concepts) -> tuple:
     return None, None, None
 
 
-def _warrant_shares(facts: dict):
-    """
-    Warrant hisse sayısını bulmaya çalışır.
-    Şirketler farklı etiket kullanır, en yaygın 3'ünü dener.
-    """
-    val, _, _ = _latest_xbrl(
-        facts,
-        "ClassOfWarrantOrRightOutstanding",
-        "WarrantsAndRightsOutstanding",
-        "ClassOfWarrantOrRightNumberOfSecuritiesCalledByWarrantsOrRights",
-    )
-    return val
-
-
 def fetch_edgar_floats(tickers: list, split_map: dict) -> dict:
-    print(f"\n[7/7] EDGAR XBRL float çekiliyor — {len(tickers)} ticker...")
-    cik_map   = _cik_map(tickers)
-    print(f"    {len(cik_map)}/{len(tickers)} CIK eşlendi")
-    result    = {}
+    print(f"\n[6/6] EDGAR XBRL float çekiliyor — {len(tickers)} ticker...")
+    if not tickers:
+        print("    Ticker listesi boş, atlanıyor.")
+        SOURCE_STATUS["edgar_float"] = "skip:no_tickers"
+        return {}
+
+    cik_map = _cik_map(tickers)
+    result  = {}
     not_found = []
 
     for ticker in tickers:
@@ -455,7 +607,6 @@ def fetch_edgar_floats(tickers: list, split_map: dict) -> dict:
                 continue
             facts = r.json()
 
-            # Float / shares outstanding
             float_val, float_date, float_form = _latest_xbrl(
                 facts,
                 "CommonStockSharesOutstanding",
@@ -463,16 +614,19 @@ def fetch_edgar_floats(tickers: list, split_map: dict) -> dict:
                 "FloatShares",
                 "CommonStockSharesIssued",
             )
-            # Warrant overhang
-            warrant_val = _warrant_shares(facts)
+            warrant_val, _, _ = _latest_xbrl(
+                facts,
+                "ClassOfWarrantOrRightOutstanding",
+                "WarrantsAndRightsOutstanding",
+            )
 
-            # Post-split tahmini
             sp          = split_map.get(ticker, {})
             sp_ratio    = sp.get("ratio")
             sp_date     = sp.get("date","")
             edgar_dt    = (float_date or "")[:10]
             is_presplit = bool(sp_ratio and sp_date and edgar_dt and edgar_dt < sp_date)
-            est_post    = int(float_val / sp_ratio) if (is_presplit and float_val and sp_ratio) else None
+            est_post    = (int(float_val / sp_ratio)
+                          if (is_presplit and float_val and sp_ratio) else None)
 
             result[ticker] = {
                 "ticker":               ticker,
@@ -487,39 +641,26 @@ def fetch_edgar_floats(tickers: list, split_map: dict) -> dict:
                 "split_date":           sp_date,
             }
         except Exception as e:
-            print(f"    {ticker}: {e}")
             not_found.append(ticker)
         time.sleep(0.12)
 
     if not_found:
-        msg = ", ".join(not_found[:10])
-        if len(not_found) > 10:
-            msg += f" ... +{len(not_found)-10}"
-        print(f"    Bulunamayan: {msg}")
+        sample = ", ".join(not_found[:8])
+        extra  = f" +{len(not_found)-8}" if len(not_found) > 8 else ""
+        print(f"    Bulunamadı: {sample}{extra}")
 
+    print(f"    {len(result)} ticker için float alındı")
+    SOURCE_STATUS["edgar_float"] = f"ok:{len(result)}"
     save("floats.json", list(result.values()), min_records=1)
-    print(f"    {len(result)} ticker için EDGAR float alındı")
     return result
 
 
-# ══════════════════════════════════════════════
-# SQUEEZE SKORU — 0-100 arası
-# ══════════════════════════════════════════════
+# ════════════════════════════════════════════════
+# SQUEEZE SKORU
+# ════════════════════════════════════════════════
 def squeeze_score(s: dict) -> tuple:
-    """
-    Faktörler:
-      1. Short Float %   → max 25p
-      2. C2B             → max 25p
-      3. Float küçüklüğü → max 20p
-      4. DTC             → max 15p  ← YENİ
-      5. RegSHO          → max 10p
-      6. SI değişimi     → max  5p
-    Toplam max: 100p
-    Döner: (score: int, reasons: list[str])
-    """
     score, reasons = 0, []
 
-    # 1. Short Float %
     sf = to_float(s.get("short_float_pct"))
     if sf is not None:
         if   sf >= 50: score += 25; reasons.append("SI%≥50")
@@ -527,7 +668,6 @@ def squeeze_score(s: dict) -> tuple:
         elif sf >= 15: score += 10; reasons.append("SI%≥15")
         elif sf >=  5: score +=  4
 
-    # 2. C2B (borrow rate %)
     c2b = to_float(s.get("c2b"))
     if c2b is not None:
         if   c2b >= 200: score += 25; reasons.append("C2B≥200%")
@@ -536,7 +676,6 @@ def squeeze_score(s: dict) -> tuple:
         elif c2b >=  20: score +=  6
         elif c2b >=  10: score +=  3
 
-    # 3. Float küçüklüğü — diluted float kullan (warrant dahil)
     fl = to_float(s.get("diluted_float") or s.get("float"))
     if fl is not None:
         if   fl <   500_000: score += 20; reasons.append("Float<500K")
@@ -544,101 +683,98 @@ def squeeze_score(s: dict) -> tuple:
         elif fl < 2_000_000: score += 10; reasons.append("Float<2M")
         elif fl < 5_000_000: score +=  5
 
-    # 4. DTC (Days to Cover)
     dtc = to_float(s.get("dtc"))
     if dtc is not None:
         if   dtc >= 10: score += 15; reasons.append("DTC≥10")
         elif dtc >=  5: score += 10; reasons.append("DTC≥5")
         elif dtc >=  2: score +=  5
 
-    # 5. RegSHO
     if s.get("reg_sho") == "✅":
         score += 10; reasons.append("RegSHO")
 
-    # 6. SI değişimi
     si_chg = to_float(s.get("si_change"))
     if si_chg is not None:
         if   si_chg >= 50: score +=  5; reasons.append("SI+%≥50")
         elif si_chg >= 20: score +=  3; reasons.append("SI+%≥20")
-        elif si_chg < -20: score -=  3  # short kapanıyorsa düşür
+        elif si_chg < -20: score -=  3
 
     return max(0, min(100, score)), reasons
 
 
-# ══════════════════════════════════════════════
+# ════════════════════════════════════════════════
 # MAIN
-# ══════════════════════════════════════════════
+# ════════════════════════════════════════════════
 if __name__ == "__main__":
     run_start = datetime.now(timezone.utc)
-    print(f"\n{'='*58}")
+    print(f"\n{'='*60}")
     print(f"  SHORT RADAR — {run_start.strftime('%Y-%m-%d %H:%M UTC')}")
-    print(f"{'='*58}")
+    print(f"{'='*60}")
 
-    ce  = fetch_chartexchange()
-    rs  = fetch_regsho()
-    sp  = fetch_splits()
-    ins = fetch_insider()
-    s1  = fetch_sec_s1()
+    ce       = fetch_chartexchange()
+    rs       = fetch_regsho()
+    sp       = fetch_splits()
+    ins      = fetch_insider()
+    s1       = fetch_sec_s1()
     finra_si = fetch_finra_short_interest()
 
-    # ── Ticker setleri ──────────────────────────
-    regsho_tickers = {r.get("Symbol", r.get("Ticker","")) for r in rs}
+    # ── Yardımcı setler ─────────────────────────
+    regsho_tickers = {
+        r.get("Symbol") or r.get("Ticker","")
+        for r in rs
+        if r.get("Symbol") or r.get("Ticker")
+    }
+    print(f"\n  RegSHO tickers: {len(regsho_tickers)}")
 
-    split_tickers = set()
-    split_map     = {}   # {ticker: {ratio, date}}
+    split_map = {}
     for row in sp:
         if not row.get("is_reverse"):
             continue
-        t = (row.get("Symbol") or row.get("Ticker")
-             or row.get("symbol") or row.get("ticker",""))
-        if not t:
-            continue
-        split_tickers.add(t)
-        if t not in split_map and row.get("split_ratio"):
+        t = (row.get("Symbol") or row.get("Ticker") or
+             row.get("symbol") or row.get("ticker",""))
+        if t and t not in split_map and row.get("split_ratio"):
             split_map[t] = {
                 "ratio": row["split_ratio"],
                 "date":  row.get("split_date",""),
             }
 
+    # C2B'den ticker listesi
     top_c2b_tickers = set()
-    for row in ce[:30]:
+    for row in ce[:50]:
         t = row.get("symbol") or row.get("ticker") or row.get("Symbol","")
         if t:
             top_c2b_tickers.add(t)
 
-    # ── Ortalama hacim haritası (Chartexchange'den) ──
+    # Ortalama hacim haritası
     avg_vol_map = {}
     for row in ce:
         t = row.get("symbol") or row.get("ticker") or row.get("Symbol","")
         if not t:
             continue
-        avg_vol = to_float(row.get("10_day_avg_vol") or row.get("tenDayAvgVol"))
-        if avg_vol:
-            avg_vol_map[t] = avg_vol
+        v = to_float(row.get("10_day_avg_vol") or row.get("tenDayAvgVol"))
+        if v:
+            avg_vol_map[t] = v
 
-    # ── EDGAR Float ─────────────────────────────
-    float_tickers = list(regsho_tickers | split_tickers | top_c2b_tickers)
+    # ── EDGAR float ─────────────────────────────
+    float_tickers = list(regsho_tickers | set(split_map.keys()) | top_c2b_tickers)
     float_map     = fetch_edgar_floats(float_tickers, split_map)
 
-    # FINRA SI + short float % + DTC → float_map'e ekle
+    # FINRA SI + DTC → float_map'e yaz
     for ticker, fd in float_map.items():
-        fi          = finra_si.get(ticker, {})
-        si_shares   = fi.get("short_interest")
-        eff_float   = fd.get("est_post_split_float") or fd.get("float_shares")
-        warrant     = fd.get("warrant_shares") or 0
-        # Diluted float = float + warrant (post-offering riski için)
-        diluted     = int(eff_float + warrant) if eff_float else None
-        sf_pct      = round(si_shares / eff_float * 100, 2) if (si_shares and eff_float) else None
-        # DTC = FINRA SI ÷ 10-günlük ortalama hacim
-        avg_vol     = avg_vol_map.get(ticker)
-        dtc         = round(si_shares / avg_vol, 2) if (si_shares and avg_vol and avg_vol > 0) else None
-
+        fi        = finra_si.get(ticker, {})
+        si_shares = fi.get("short_interest")
+        eff_float = fd.get("est_post_split_float") or fd.get("float_shares")
+        warrant   = fd.get("warrant_shares") or 0
+        diluted   = int(eff_float + warrant) if eff_float else None
+        sf_pct    = (round(si_shares / eff_float * 100, 2)
+                     if (si_shares and eff_float) else None)
+        avg_vol   = avg_vol_map.get(ticker)
+        dtc       = (round(si_shares / avg_vol, 2)
+                     if (si_shares and avg_vol and avg_vol > 0) else None)
         fd.update({
             "finra_si":        si_shares,
             "finra_si_date":   fi.get("si_date",""),
             "short_float_pct": sf_pct,
             "diluted_float":   diluted,
-            "warrant_shares":  fd.get("warrant_shares"),
             "dtc":             dtc,
             "effective_float": eff_float,
         })
@@ -651,106 +787,101 @@ if __name__ == "__main__":
         if t:
             ce_map[t] = row
 
-    # ── S1 haritası (ticker varsa) ───────────────
+    # ── S1 ticker haritası ───────────────────────
     s1_map = {}
     for s in s1:
         t = s.get("ticker","")
         if t:
             s1_map[t] = s
 
-    # ── Özet tablosu ─────────────────────────────
+    # ── Özet tablosu ────────────────────────────
     summary_map = {}
     for ticker, row in ce_map.items():
-        fd   = float_map.get(ticker, {})
-        fi   = finra_si.get(ticker, {})
-        s1r  = s1_map.get(ticker, {})
-        eff_float = fd.get("effective_float") or to_float(row.get("shares_float"))
+        fd  = float_map.get(ticker, {})
+        fi  = finra_si.get(ticker, {})
+        s1r = s1_map.get(ticker, {})
 
-        # Short float %: FINRA öncelikli, yoksa Chartexchange
-        sf_pct = fd.get("short_float_pct") or to_float(row.get("shortint_pct"))
-
-        # DTC
-        dtc    = fd.get("dtc")
+        eff_float = (fd.get("effective_float") or
+                     to_float(row.get("shares_float")))
+        sf_pct    = (fd.get("short_float_pct") or
+                     to_float(row.get("shortint_pct")))
 
         rec = {
             "ticker":               ticker,
-            # C2B
-            "c2b":                  to_float(row.get("borrow_fee_rate_ib") or row.get("borrowFeeRateIb")),
+            "c2b":                  to_float(row.get("borrow_fee_rate_ib") or
+                                             row.get("borrowFeeRateIb")),
             "shares_avail":         to_float(row.get("borrow_fee_avail_ib")),
-            # Float
-            "float":                fd.get("est_post_split_float") or fd.get("float_shares") or to_float(row.get("shares_float")),
+            "float":                (fd.get("est_post_split_float") or
+                                     fd.get("float_shares") or
+                                     to_float(row.get("shares_float"))),
             "diluted_float":        fd.get("diluted_float"),
             "warrant_shares":       fd.get("warrant_shares"),
             "float_is_presplit":    fd.get("float_is_presplit", False),
             "est_post_split_float": fd.get("est_post_split_float"),
             "float_date":           fd.get("float_date",""),
             "float_form":           fd.get("float_form",""),
-            # Short interest
             "short_float_pct":      sf_pct,
             "finra_si":             fd.get("finra_si"),
             "finra_si_date":        fd.get("finra_si_date",""),
             "si_change":            to_float(row.get("shortint_position_change_pct")),
-            # Short volume (günlük Chartexchange)
             "short_vol_pct":        to_float(row.get("shortvol_all_short_pct")),
             "short_vol_30d_pct":    to_float(row.get("shortvol_all_short_pct_30d")),
-            # DTC
-            "dtc":                  dtc,
+            "dtc":                  fd.get("dtc"),
             "avg_vol_10d":          avg_vol_map.get(ticker),
-            # Fiyat
             "price":                to_float(row.get("reg_price")),
             "change_pct":           to_float(row.get("reg_change_pct")),
             "pre_price":            to_float(row.get("pre_price")),
             "pre_change":           to_float(row.get("pre_change_pct")),
-            # Flags
             "reg_sho":              "✅" if ticker in regsho_tickers else "❌",
-            "has_split":            "✅" if ticker in split_tickers   else "-",
-            "split_ratio":          split_map.get(ticker, {}).get("ratio"),
-            "split_date":           split_map.get(ticker, {}).get("date",""),
-            # S1
+            "has_split":            "✅" if ticker in split_map      else "-",
+            "split_ratio":          split_map.get(ticker,{}).get("ratio"),
+            "split_date":           split_map.get(ticker,{}).get("date",""),
             "s1_date":              s1r.get("filed_date",""),
             "s1_form":              s1r.get("form",""),
-            # Offering sonrası uyarı: S-1/A varsa float artmış olabilir
             "offering_warning":     bool(s1r and s1r.get("form") == "S-1/A"),
         }
-        # Squeeze skoru
         sc, reasons = squeeze_score(rec)
         rec["squeeze_score"]   = sc
         rec["squeeze_reasons"] = ", ".join(reasons)
-        summary_map[ticker] = rec
+        summary_map[ticker]    = rec
 
     # S1 kayıtlarını zenginleştir
     for s in s1:
         t  = s.get("ticker","")
         fd = float_map.get(t, {})
-        s["float"]          = fd.get("est_post_split_float") or fd.get("float_shares")
-        s["diluted_float"]  = fd.get("diluted_float")
-        s["float_date"]     = fd.get("float_date","")
-        s["float_form"]     = fd.get("float_form","")
-        s["short_float_pct"]= fd.get("short_float_pct")
-        s["reg_sho"]        = "✅" if t in regsho_tickers else "❌"
-        s["in_summary"]     = t in summary_map
+        s.update({
+            "float":           fd.get("est_post_split_float") or fd.get("float_shares"),
+            "diluted_float":   fd.get("diluted_float"),
+            "float_date":      fd.get("float_date",""),
+            "float_form":      fd.get("float_form",""),
+            "short_float_pct": fd.get("short_float_pct"),
+            "reg_sho":         "✅" if t in regsho_tickers else "❌",
+            "in_summary":      t in summary_map,
+        })
 
     run_end = datetime.now(timezone.utc)
     elapsed = round((run_end - run_start).total_seconds())
 
-    # save() returns False when old file is preserved (fetch returned too few records)
+    # ── Dosyaları kaydet ────────────────────────
     results = {
-        "summary":  save("summary.json", list(summary_map.values()), min_records=10),
-        "regsho_t": save("regsho_tickers.json", list(regsho_tickers), min_records=1),
-        "s1":       save("s1_edgar.json", s1, min_records=1),
+        "summary":  save("summary.json",        list(summary_map.values()), min_records=10),
+        "regsho_t": save("regsho_tickers.json", list(regsho_tickers),       min_records=1),
+        "s1":       save("s1_edgar.json",        s1,                        min_records=1),
     }
-    critical_ok = results["summary"]  # summary yazılamazsa scraper_ok=False
+    critical_ok = results["summary"]
 
     save_meta({
         "updated_at":      run_end.isoformat(),
         "elapsed_sec":     elapsed,
         "scraper_ok":      critical_ok,
         "protected_files": [k for k, v in results.items() if not v],
+        "source_status":   SOURCE_STATUS,
         "counts": {
             "chartexchange":  len(ce),
             "regsho":         len(rs),
             "splits_reverse": sum(1 for x in sp if x.get("is_reverse")),
-            "splits_upcoming":sum(1 for x in sp if x.get("is_reverse") and x.get("list_type")=="upcoming"),
+            "splits_upcoming":sum(1 for x in sp if x.get("is_reverse") and
+                                  x.get("list_type")=="upcoming"),
             "insider":        len(ins),
             "s1_edgar":       len(s1),
             "floats":         len(float_map),
@@ -759,16 +890,9 @@ if __name__ == "__main__":
         },
     })
 
-    estimated = sum(1 for f in float_map.values() if f.get("est_post_split_float"))
-    warned    = sum(1 for s in summary_map.values() if s.get("offering_warning"))
-    print(f"\n{'='*58}")
+    print(f"\n{'='*60}")
     print(f"  ✅  Tamamlandı ({elapsed}s)")
-    print(f"  C2B        : {len(ce)} ticker")
-    print(f"  RegSHO     : {len(rs)} ticker")
-    print(f"  Rev.Split  : {sum(1 for x in sp if x.get('is_reverse'))} adet")
-    print(f"  S1 (EDGAR) : {len(s1)} başvuru")
-    print(f"  Float      : {len(float_map)} ticker (EDGAR XBRL)")
-    print(f"  FINRA SI   : {len(finra_si)} ticker")
-    if estimated: print(f"  RS Tahmin  : {estimated} ticker")
-    if warned:    print(f"  Offering ⚠ : {warned} ticker (S-1/A var)")
-    print(f"{'='*58}\n")
+    for src, status in SOURCE_STATUS.items():
+        icon = "✓" if status.startswith("ok") else "✗"
+        print(f"  {icon}  {src}: {status}")
+    print(f"{'='*60}\n")
