@@ -1,0 +1,394 @@
+[
+  {
+    "ticker": "GGLS",
+    "regsho": true,
+    "reverse_split": false,
+    "short_interest": null,
+    "c2b": null
+  },
+  {
+    "ticker": "FIGG",
+    "regsho": true,
+    "reverse_split": false,
+    "short_interest": null,
+    "c2b": null
+  },
+  {
+    "ticker": "HOOX",
+    "regsho": true,
+    "reverse_split": false,
+    "short_interest": null,
+    "c2b": null
+  },
+  {
+    "ticker": "CDIO",
+    "regsho": true,
+    "reverse_split": false,
+    "short_interest": null,
+    "c2b": null
+  },
+  {
+    "ticker": "RKLZ",
+    "regsho": true,
+    "reverse_split": false,
+    "short_interest": null,
+    "c2b": null
+  },
+  {
+    "ticker": "RGTZ",
+    "regsho": true,
+    "reverse_split": false,
+    "short_interest": null,
+    "c2b": null
+  },
+  {
+    "ticker": "OKLL",
+    "regsho": true,
+    "reverse_split": false,
+    "short_interest": null,
+    "c2b": null
+  },
+  {
+    "ticker": "BRTX",
+    "regsho": true,
+    "reverse_split": false,
+    "short_interest": null,
+    "c2b": null
+  },
+  {
+    "ticker": "PLTZ",
+    "regsho": true,
+    "reverse_split": false,
+    "short_interest": null,
+    "c2b": null
+  },
+  {
+    "ticker": "RGTX",
+    "regsho": true,
+    "reverse_split": false,
+    "short_interest": null,
+    "c2b": null
+  },
+  {
+    "ticker": "GV",
+    "regsho": true,
+    "reverse_split": false,
+    "short_interest": null,
+    "c2b": null
+  },
+  {
+    "ticker": "MSTX",
+    "regsho": true,
+    "reverse_split": false,
+    "short_interest": null,
+    "c2b": null
+  },
+  {
+    "ticker": "BNAI",
+    "regsho": true,
+    "reverse_split": false,
+    "short_interest": null,
+    "c2b": null
+  },
+  {
+    "ticker": "EMPD",
+    "regsho": true,
+    "reverse_split": false,
+    "short_interest": null,
+    "c2b": null
+  },
+  {
+    "ticker": "FEED",
+    "regsho": true,
+    "reverse_split": false,
+    "short_interest": null,
+    "c2b": null
+  },
+  {
+    "ticker": "SMST",
+    "regsho": true,
+    "reverse_split": false,
+    "short_interest": null,
+    "c2b": null
+  },
+  {
+    "ticker": "PFSA",
+    "regsho": true,
+    "reverse_split": false,
+    "short_interest": null,
+    "c2b": null
+  },
+  {
+    "ticker": "BHAT",
+    "regsho": true,
+    "reverse_split": false,
+    "short_interest": null,
+    "c2b": null
+  },
+  {
+    "ticker": "PDC",
+    "regsho": true,
+    "reverse_split": false,
+    "short_interest": null,
+    "c2b": null
+  },
+  {
+    "ticker": "OLB",
+    "regsho": true,
+    "reverse_split": false,
+    "short_interest": null,
+    "c2b": null
+  },
+  {
+    "ticker": "AREB",
+    "regsho": true,
+    "reverse_split": false,
+    "short_interest": null,
+    "c2b": null
+  },
+  {
+    "ticker": "AMZD",
+    "regsho": true,
+    "reverse_split": false,
+    "short_interest": null,
+    "c2b": null
+  },
+  {
+    "ticker": "MLEC",
+    "regsho": true,
+    "reverse_split": false,
+    "short_interest": null,
+    "c2b": null
+  },
+  {
+    "ticker": "MYCH",
+    "regsho": true,
+    "reverse_split": false,
+    "short_interest": null,
+    "c2b": null
+  },
+  {
+    "ticker": "FRIDAY, FEBRUARY 27, 2026",
+    "regsho": true,
+    "reverse_split": false,
+    "short_interest": null,
+    "c2b": null
+  },
+  {
+    "ticker": "KXIN",
+    "regsho": true,
+    "reverse_split": false,
+    "short_interest": null,
+    "c2b": null
+  },
+  {
+    "ticker": "NVDL",
+    "regsho": true,
+    "reverse_split": false,
+    "short_interest": null,
+    "c2b": null
+  },
+  {
+    "ticker": "RUBI",
+    "regsho": true,
+    "reverse_split": false,
+    "short_interest": null,
+    "c2b": null
+  },
+  {
+    "ticker": "VEEE",
+    "regsho": true,
+    "reverse_split": false,
+    "short_interest": null,
+    "c2b": null
+  },
+  {
+    "ticker": "APPX",
+    "regsho": true,
+    "reverse_split": false,
+    "short_interest": null,
+    "c2b": null
+  },
+  {
+    "ticker": "QBTZ",
+    "regsho": true,
+    "reverse_split": false,
+    "short_interest": null,
+    "c2b": null
+  },
+  {
+    "ticker": "IONZ",
+    "regsho": true,
+    "reverse_split": false,
+    "short_interest": null,
+    "c2b": null
+  },
+  {
+    "ticker": "LFS",
+    "regsho": true,
+    "reverse_split": false,
+    "short_interest": null,
+    "c2b": null
+  },
+  {
+    "ticker": "SMCX",
+    "regsho": true,
+    "reverse_split": false,
+    "short_interest": null,
+    "c2b": null
+  },
+  {
+    "ticker": "SMX",
+    "regsho": true,
+    "reverse_split": false,
+    "short_interest": null,
+    "c2b": null
+  },
+  {
+    "ticker": "SVRN",
+    "regsho": true,
+    "reverse_split": false,
+    "short_interest": null,
+    "c2b": null
+  },
+  {
+    "ticker": "XTKG",
+    "regsho": true,
+    "reverse_split": false,
+    "short_interest": null,
+    "c2b": null
+  },
+  {
+    "ticker": "JZXN",
+    "regsho": true,
+    "reverse_split": false,
+    "short_interest": null,
+    "c2b": null
+  },
+  {
+    "ticker": "HIMZ",
+    "regsho": true,
+    "reverse_split": false,
+    "short_interest": null,
+    "c2b": null
+  },
+  {
+    "ticker": "54",
+    "regsho": true,
+    "reverse_split": false,
+    "short_interest": null,
+    "c2b": null
+  },
+  {
+    "ticker": "PBOG",
+    "regsho": true,
+    "reverse_split": false,
+    "short_interest": null,
+    "c2b": null
+  },
+  {
+    "ticker": "RVSN",
+    "regsho": true,
+    "reverse_split": false,
+    "short_interest": null,
+    "c2b": null
+  },
+  {
+    "ticker": "RIME",
+    "regsho": true,
+    "reverse_split": false,
+    "short_interest": null,
+    "c2b": null
+  },
+  {
+    "ticker": "AIXI",
+    "regsho": true,
+    "reverse_split": false,
+    "short_interest": null,
+    "c2b": null
+  },
+  {
+    "ticker": "LGHL",
+    "regsho": true,
+    "reverse_split": false,
+    "short_interest": null,
+    "c2b": null
+  },
+  {
+    "ticker": "MGRX",
+    "regsho": true,
+    "reverse_split": false,
+    "short_interest": null,
+    "c2b": null
+  },
+  {
+    "ticker": "XRXDW",
+    "regsho": true,
+    "reverse_split": false,
+    "short_interest": null,
+    "c2b": null
+  },
+  {
+    "ticker": "SOUX",
+    "regsho": true,
+    "reverse_split": false,
+    "short_interest": null,
+    "c2b": null
+  },
+  {
+    "ticker": "NCI",
+    "regsho": true,
+    "reverse_split": false,
+    "short_interest": null,
+    "c2b": null
+  },
+  {
+    "ticker": "CISS",
+    "regsho": true,
+    "reverse_split": false,
+    "short_interest": null,
+    "c2b": null
+  },
+  {
+    "ticker": "UOKA",
+    "regsho": true,
+    "reverse_split": false,
+    "short_interest": null,
+    "c2b": null
+  },
+  {
+    "ticker": "DYTA",
+    "regsho": true,
+    "reverse_split": false,
+    "short_interest": null,
+    "c2b": null
+  },
+  {
+    "ticker": "TDI",
+    "regsho": true,
+    "reverse_split": false,
+    "short_interest": null,
+    "c2b": null
+  },
+  {
+    "ticker": "ELPW",
+    "regsho": true,
+    "reverse_split": false,
+    "short_interest": null,
+    "c2b": null
+  },
+  {
+    "ticker": "HBR",
+    "regsho": true,
+    "reverse_split": false,
+    "short_interest": null,
+    "c2b": null
+  },
+  {
+    "ticker": "NOWL",
+    "regsho": true,
+    "reverse_split": false,
+    "short_interest": null,
+    "c2b": null
+  }
+]

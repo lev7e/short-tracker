@@ -1,19 +1,17 @@
 {
-  "updated_at": "2026-03-01T11:58:05.506368+00:00",
-  "elapsed_sec": 137,
-  "scraper_ok": false,
-  "protected_files": [
-    "summary"
-  ],
+  "updated_at": "2026-03-01T12:42:15.470725+00:00",
+  "elapsed_sec": 4.07,
+  "scraper_ok": true,
   "counts": {
     "chartexchange": 0,
-    "regsho": 1,
-    "splits_reverse": 473,
-    "splits_upcoming": 0,
-    "insider": 56,
-    "s1_edgar": 14,
-    "floats": 404,
+    "regsho": 56,
+    "splits_reverse": 0,
     "finra_si": 0,
-    "summary": 0
+    "summary": 56
+  },
+  "source_status": {
+    "chartexchange": "blocked_or_error",
+    "regsho": "ok:56",
+    "finra_si": "ok:0"
   }
 }
