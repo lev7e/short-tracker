@@ -338,7 +338,7 @@ def fetch_chartexchange():
             if len(rows) < 100:
                 break
             page += 1
-            time.sleep(0.7)
+            time.sleep(2.5)  # Rate limit
 
         except Exception as e:
             print(f"    İstisna: {e}")
@@ -486,8 +486,174 @@ def fetch_regsho():
 
 
 # ══════════════════════════════════════════════════
-# 3. FINRA — Short Interest biweekly
-#    Log'da HEAD başarısız oluyordu. Direkt GET kullan.
+# 3. STOCK ANALYSIS — Reverse Splits
+# ══════════════════════════════════════════════════
+def fetch_splits():
+    print("\n[3/6] Split listesi çekiliyor (StockAnalysis)...")
+    rows = []
+    for label, url in {
+        "recent":   "https://stockanalysis.com/actions/splits/?p=quarterly",
+        "upcoming": "https://stockanalysis.com/actions/splits/upcoming/?p=quarterly",
+    }.items():
+        try:
+            r = requests.get(url, headers={**BROWSER_HEADERS, "Accept": "text/html,*/*"}, timeout=30)
+            print(f"    {label}: HTTP {r.status_code}, {len(r.content)}b")
+            page_rows = []
+            # __NEXT_DATA__
+            nd = next_data(r.text)
+            if nd:
+                for path in [["props","pageProps","data"],["props","pageProps","splits"],
+                             ["props","pageProps","tableData"]]:
+                    node = nd
+                    try:
+                        for key in path:
+                            node = node[key]
+                        if isinstance(node, list) and node:
+                            page_rows = node
+                            print(f"    {label} __NEXT_DATA__: {len(page_rows)}")
+                            break
+                    except (KeyError, TypeError):
+                        pass
+            # HTML tablo fallback
+            if not page_rows:
+                soup = BeautifulSoup(r.text, "html.parser")
+                table = soup.find("table")
+                if table:
+                    hdrs = [th.get_text(strip=True) for th in table.find_all("th")]
+                    for tr in table.find_all("tr")[1:]:
+                        cells = [td.get_text(strip=True) for td in tr.find_all("td")]
+                        if cells:
+                            page_rows.append(dict(zip(hdrs, cells)))
+                    print(f"    {label} HTML: {len(page_rows)}")
+            for row in page_rows:
+                sym = (row.get("Symbol") or row.get("symbol") or row.get("ticker",""))
+                ratio_str = (row.get("Ratio") or row.get("ratio") or
+                             row.get("Split Ratio") or row.get("splitRatio",""))
+                raw_date  = (row.get("Date") or row.get("date") or
+                             row.get("Split Date") or row.get("splitDate",""))
+                ratio = parse_split_ratio(str(ratio_str))
+                rows.append({
+                    "Symbol":      sym, "Ratio": ratio_str,
+                    "Date":        normalize_date(str(raw_date)),
+                    "is_reverse":  ratio is not None, "split_ratio": ratio,
+                    "split_date":  normalize_date(str(raw_date)), "list_type": label,
+                })
+            time.sleep(0.5)
+        except Exception as e:
+            print(f"    {label}: {e}")
+    SOURCE_STATUS["splits"] = f"ok:{sum(1 for x in rows if x.get('is_reverse'))}"
+    save("splits.json", rows, min_records=1)
+    return rows
+
+
+# ══════════════════════════════════════════════════
+# 4. FINVIZ — Insider
+# ══════════════════════════════════════════════════
+def fetch_insider():
+    print("\n[4/6] Finviz insider taranıyor...")
+    rows = []
+    try:
+        for fin_url in [
+            "https://finviz.com/insidertrading.ashx?or=-10&tv=100&tc=1&o=-transactionDate",
+            "https://finviz.com/insidertrading?tc=1",
+        ]:
+            r = requests.get(fin_url, headers={**BROWSER_HEADERS,
+                             "Accept": "text/html,*/*", "Referer": "https://finviz.com/"},
+                             timeout=30)
+            print(f"    HTTP {r.status_code}, {len(r.content)}b")
+            if r.status_code == 200 and len(r.content) > 10000:
+                break
+        soup = BeautifulSoup(r.text, "html.parser")
+        table = None
+        for sel in [
+            lambda s: s.find("table", {"id": "insider-trading-table"}),
+            lambda s: s.find("table", class_=re.compile(r"insider|trading", re.I)),
+            lambda s: next((t for t in s.find_all("table")
+                           if any("Ticker" in str(th) for th in t.find_all("th"))), None),
+        ]:
+            table = sel(soup)
+            if table:
+                break
+        if table:
+            hdrs = [th.get_text(strip=True) for th in table.find_all("th")]
+            for tr in table.find_all("tr")[1:100]:
+                cells = [td.get_text(strip=True) for td in tr.find_all("td")]
+                if cells and len(cells) >= 4:
+                    rows.append(dict(zip(hdrs, cells)))
+        print(f"    {len(rows)} insider işlem")
+        SOURCE_STATUS["insider"] = f"ok:{len(rows)}"
+    except Exception as e:
+        print(f"    Hata: {e}")
+        SOURCE_STATUS["insider"] = f"error:{e}"
+    save("insider.json", rows, min_records=5)
+    return rows
+
+
+# ══════════════════════════════════════════════════
+# 5. SEC EDGAR — S-1 / S-1/A
+# ══════════════════════════════════════════════════
+def fetch_sec_s1():
+    print("\n[5/6] SEC EDGAR S-1 başvuruları çekiliyor...")
+    rows, seen = [], set()
+    start = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+    end   = datetime.now().strftime("%Y-%m-%d")
+    for form_type in ["S-1", "S-1/A"]:
+        try:
+            r = requests.get(
+                "https://efts.sec.gov/LATEST/search-index",
+                params={"forms": form_type, "dateRange": "custom",
+                        "startdt": start, "enddt": end},
+                headers=SEC_HEADERS, timeout=30,
+            )
+            print(f"    {form_type}: HTTP {r.status_code}")
+            if r.status_code != 200:
+                continue
+            data  = r.json()
+            hits  = data.get("hits", {}).get("hits", [])
+            if hits:
+                s0  = hits[0].get("_source", {})
+                dn0 = s0.get("display_names", "")
+                dn_sample = str(dn0[0]) if isinstance(dn0, list) and dn0 else repr(dn0)[:80]
+                print(f"    {form_type}: {len(hits)} hit, display_names[0]: {dn_sample}")
+            for hit in hits:
+                s = hit.get("_source", {})
+                display = s.get("display_names") or []
+                if isinstance(display, list) and display:
+                    first  = display[0] if isinstance(display[0], dict) else {}
+                    entity = first.get("name", "").strip()
+                    ticker = first.get("ticker", "").strip()
+                else:
+                    entity, ticker = "", ""
+                if not entity:
+                    entity = (s.get("entity_name") or s.get("company_name") or "").strip()
+                if not ticker:
+                    t2 = s.get("ticker") or s.get("tickers") or ""
+                    ticker = (t2[0] if isinstance(t2, list) and t2 else str(t2)).strip()
+                filed = (s.get("file_date") or s.get("filed_at") or "")
+                uid   = f"{entity}|{filed}"
+                if uid in seen:
+                    continue
+                if not entity and not ticker:
+                    continue
+                seen.add(uid)
+                if not ticker:
+                    m = re.search(r"\(proposed[:\s]+([A-Za-z]{1,5})\)", entity, re.I)
+                    if m:
+                        ticker = m.group(1).upper()
+                rows.append({"form": form_type, "ticker": ticker, "company": entity,
+                             "filed_date": filed,
+                             "edgar_url": f"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&company={requests.utils.quote(entity)}&type=S-1&dateb=&owner=include&count=10"})
+            time.sleep(0.4)
+        except Exception as e:
+            print(f"    {form_type} hatası: {e}")
+    print(f"    Toplam: {len(rows)} başvuru")
+    SOURCE_STATUS["s1"] = f"ok:{len(rows)}"
+    save("s1_edgar.json", rows, min_records=1)
+    return rows
+
+
+# ══════════════════════════════════════════════════
+# (FINRA SI artık kullanılmıyor — askedgar kullanıyoruz)
 # ══════════════════════════════════════════════════
 def fetch_finra_short_interest():
     """
