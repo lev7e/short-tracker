@@ -435,8 +435,8 @@ async function loadAll(){
       const ago = (Date.now()-d.getTime())/3600000;
       document.getElementById("dot").style.display = "";
       document.getElementById("upd").textContent =
-        d.toLocaleDateString("tr-TR")+" "+
-        d.toLocaleTimeString("tr-TR",{hour:"2-digit",minute:"2-digit"});
+        d.toLocaleDateString("en-US")+" "+
+        d.toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit"});
       const staleEl = document.getElementById("stale");
       if(ago>26){ staleEl.style.display=""; staleEl.textContent=`⚠ ${Math.round(ago)}h ago`; }
       else staleEl.style.display="none";
