@@ -1,6 +1,6 @@
 {
-  "updated_at": "2026-03-02T11:13:32.710181+00:00",
-  "elapsed_sec": 305,
+  "updated_at": "2026-03-02T12:22:45.260291+00:00",
+  "elapsed_sec": 240,
   "scraper_ok": true,
   "protected_files": [
     "s1"
@@ -12,7 +12,7 @@
     "insider": "ok:0",
     "s1": "ok:0",
     "edgar_float": "ok:219",
-    "askedgar_si": "ok:75"
+    "askedgar_si": "ok:61"
   },
   "counts": {
     "chartexchange": 226,
@@ -22,7 +22,7 @@
     "insider": 0,
     "s1_edgar": 0,
     "floats": 219,
-    "askedgar_si": 75,
+    "askedgar_si": 61,
     "summary": 706
   }
 }
