@@ -1,26 +1,26 @@
 {
-  "updated_at": "2026-03-02T22:09:23.478659+00:00",
-  "elapsed_sec": 197,
+  "updated_at": "2026-03-03T08:09:16.492542+00:00",
+  "elapsed_sec": 204,
   "scraper_ok": true,
   "protected_files": [],
   "source_status": {
-    "chartexchange": "ok:222",
-    "regsho": "ok:54",
+    "chartexchange": "ok:224",
+    "regsho": "ok:53",
     "splits": "ok:0",
     "insider": "ok:0",
     "s1": "ok:124",
-    "edgar_float": "ok:211",
-    "askedgar_si": "ok:80"
+    "edgar_float": "ok:213",
+    "askedgar_si": "ok:78"
   },
   "counts": {
-    "chartexchange": 222,
-    "regsho": 54,
+    "chartexchange": 224,
+    "regsho": 53,
     "splits_reverse": 0,
     "splits_upcoming": 0,
     "insider": 0,
     "s1_edgar": 124,
-    "floats": 211,
-    "askedgar_si": 80,
-    "summary": 269
+    "floats": 213,
+    "askedgar_si": 78,
+    "summary": 271
   }
 }

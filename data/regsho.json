@@ -45,6 +45,11 @@
     "Threshold List Date": ""
   },
   {
+    "Symbol": "DUOG",
+    "Market": "",
+    "Threshold List Date": ""
+  },
+  {
     "Symbol": "DYTA",
     "Market": "",
     "Threshold List Date": ""
@@ -55,12 +60,12 @@
     "Threshold List Date": ""
   },
   {
-    "Symbol": "EMPD",
+    "Symbol": "FEED",
     "Market": "",
     "Threshold List Date": ""
   },
   {
-    "Symbol": "FEED",
+    "Symbol": "FFAI",
     "Market": "",
     "Threshold List Date": ""
   },
@@ -125,11 +130,6 @@
     "Threshold List Date": ""
   },
   {
-    "Symbol": "MLEC",
-    "Market": "",
-    "Threshold List Date": ""
-  },
-  {
     "Symbol": "MSTX",
     "Market": "",
     "Threshold List Date": ""
@@ -156,11 +156,6 @@
   },
   {
     "Symbol": "OKLL",
-    "Market": "",
-    "Threshold List Date": ""
-  },
-  {
-    "Symbol": "OLB",
     "Market": "",
     "Threshold List Date": ""
   },
