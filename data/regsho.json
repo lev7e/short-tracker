@@ -1,5 +1,10 @@
 [
   {
+    "Symbol": "ACAAU",
+    "Market": "",
+    "Threshold List Date": ""
+  },
+  {
     "Symbol": "AIXI",
     "Market": "",
     "Threshold List Date": ""
@@ -55,6 +60,11 @@
     "Threshold List Date": ""
   },
   {
+    "Symbol": "EDSA",
+    "Market": "",
+    "Threshold List Date": ""
+  },
+  {
     "Symbol": "ELPW",
     "Market": "",
     "Threshold List Date": ""
@@ -70,12 +80,27 @@
     "Threshold List Date": ""
   },
   {
+    "Symbol": "FGNX",
+    "Market": "",
+    "Threshold List Date": ""
+  },
+  {
     "Symbol": "FIGG",
     "Market": "",
     "Threshold List Date": ""
   },
   {
+    "Symbol": "FRGT",
+    "Market": "",
+    "Threshold List Date": ""
+  },
+  {
     "Symbol": "GGLS",
+    "Market": "",
+    "Threshold List Date": ""
+  },
+  {
+    "Symbol": "GNLN",
     "Market": "",
     "Threshold List Date": ""
   },
@@ -101,16 +126,6 @@
   },
   {
     "Symbol": "IONZ",
-    "Market": "",
-    "Threshold List Date": ""
-  },
-  {
-    "Symbol": "JZXN",
-    "Market": "",
-    "Threshold List Date": ""
-  },
-  {
-    "Symbol": "KXIN",
     "Market": "",
     "Threshold List Date": ""
   },
@@ -185,6 +200,11 @@
     "Threshold List Date": ""
   },
   {
+    "Symbol": "RETO",
+    "Market": "",
+    "Threshold List Date": ""
+  },
+  {
     "Symbol": "RGTX",
     "Market": "",
     "Threshold List Date": ""
@@ -240,11 +260,6 @@
     "Threshold List Date": ""
   },
   {
-    "Symbol": "TDI",
-    "Market": "",
-    "Threshold List Date": ""
-  },
-  {
     "Symbol": "UOKA",
     "Market": "",
     "Threshold List Date": ""
@@ -255,12 +270,12 @@
     "Threshold List Date": ""
   },
   {
-    "Symbol": "XRXDW",
+    "Symbol": "XTKG",
     "Market": "",
     "Threshold List Date": ""
   },
   {
-    "Symbol": "XTKG",
+    "Symbol": "XWEL",
     "Market": "",
     "Threshold List Date": ""
   }
