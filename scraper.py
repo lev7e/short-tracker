@@ -452,19 +452,23 @@ def fetch_regsho():
                     first_tr = table.find("tr")
                     if first_tr:
                         hdrs = [td.get_text(strip=True) for td in first_tr.find_all("td")]
-                if any(h in ("Symbol","Security") for h in hdrs):
+                if any(h in ("Symbol","Security","Ticker") for h in hdrs):
+                    print(f"    RegSHO HTML columns: {hdrs}")
+                    # Find date column — any header containing "Date" or "List"
+                    date_col = next((h for h in hdrs if "date" in h.lower() or "list" in h.lower()), None)
+                    mkt_col  = next((h for h in hdrs if "market" in h.lower() or "exchange" in h.lower()), None)
+                    sym_col  = next((h for h in hdrs if h in ("Symbol","Security","Ticker")), hdrs[0] if hdrs else "Symbol")
                     for tr in table.find_all("tr")[1:]:
                         cells = [td.get_text(strip=True) for td in tr.find_all("td")]
                         if len(cells) >= 2:
                             row = dict(zip(hdrs, cells))
-                            sym = row.get("Symbol") or row.get("Security") or cells[0]
+                            sym = row.get(sym_col) or cells[0]
                             sym = sym.strip().upper()
-                            if sym and sym != "SYMBOL":
+                            if sym and sym not in ("SYMBOL","TICKER","SECURITY",""):
                                 rows.append({
-                                    "Symbol": sym,
-                                    "Market": row.get("Market",""),
-                                    "Threshold List Date": row.get("Threshold List Date",
-                                                           row.get("Date","")),
+                                    "Symbol":               sym,
+                                    "Market":               row.get(mkt_col,"") if mkt_col else "",
+                                    "Threshold List Date":  row.get(date_col,"") if date_col else "",
                                 })
                     if rows:
                         print(f"    ✓ NASDAQ HTML: {len(rows)} ticker")
@@ -509,9 +513,9 @@ def fetch_splits():
             "https://stockanalysis.com/actions/splits/?p=quarterly",
         ],
         "upcoming": [
+            "https://stockanalysis.com/actions/reverse-splits/",
             "https://stockanalysis.com/actions/splits/upcoming/",
             "https://stockanalysis.com/actions/reverse-splits/?p=quarterly",
-            "https://stockanalysis.com/actions/splits/upcoming/?p=quarterly",
         ],
     }
     for label, urls in SPLIT_URLS.items():
@@ -560,12 +564,21 @@ def fetch_splits():
                              row.get("Split Ratio") or row.get("splitRatio",""))
                 raw_date  = (row.get("Date") or row.get("date") or
                              row.get("Split Date") or row.get("splitDate",""))
-                ratio = parse_split_ratio(str(ratio_str))
+                ratio     = parse_split_ratio(str(ratio_str))
+                norm_date = normalize_date(str(raw_date))
+                # Determine if upcoming: date in future OR label is "upcoming"
+                try:
+                    from datetime import date as _date
+                    split_dt   = datetime.strptime(norm_date, "%Y-%m-%d").date() if norm_date else None
+                    is_upcoming = label == "upcoming" or (split_dt and split_dt >= _date.today())
+                except Exception:
+                    is_upcoming = label == "upcoming"
                 rows.append({
                     "Symbol":      sym, "Ratio": ratio_str,
-                    "Date":        normalize_date(str(raw_date)),
+                    "Date":        norm_date,
                     "is_reverse":  ratio is not None, "split_ratio": ratio,
-                    "split_date":  normalize_date(str(raw_date)), "list_type": label,
+                    "split_date":  norm_date,
+                    "list_type":   "upcoming" if is_upcoming else "recent",
                 })
             time.sleep(0.5)
         except Exception as e:
@@ -685,24 +698,14 @@ def fetch_sec_s1():
                     if m:
                         ticker = m.group(1).upper()
                 if not ticker:
-                    # Try root_forms or file_num fields
-                    ciks_list = s.get("ciks") or []
-                    root = s.get("root_forms") or []
-                    # Try EDGAR company search for the CIK
-                    if ciks_list:
-                        try:
-                            cik_str = str(ciks_list[0]).zfill(10)
-                            cr = requests.get(
-                                f"https://data.sec.gov/submissions/CIK{cik_str}.json",
-                                headers=SEC_HEADERS, timeout=8)
-                            if cr.status_code == 200:
-                                cd = cr.json()
-                                ticker = cd.get("tickers", [None])[0] or ""
-                                if ticker:
-                                    ticker = ticker.upper()
-                        except Exception:
-                            pass
-                    time.sleep(0.05)
+                    # Try to get ticker from ciks list via EDGAR submissions
+                    # Only do this if we have a cik — batch lookup via _cik_map is too slow
+                    # Instead use tickers field directly from the hit
+                    tickers_field = s.get("tickers") or s.get("ticker") or []
+                    if isinstance(tickers_field, list) and tickers_field:
+                        ticker = str(tickers_field[0]).upper()
+                    elif isinstance(tickers_field, str) and tickers_field:
+                        ticker = tickers_field.upper()
                 rows.append({"form": form_type, "ticker": ticker, "company": entity,
                              "filed_date": filed,
                              "edgar_url": f"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&company={requests.utils.quote(entity)}&type=S-1&dateb=&owner=include&count=10"})
@@ -728,49 +731,64 @@ def fetch_finra_short_interest():
 
 def fetch_askedgar_si(tickers: list) -> dict:
     """
-    askedgar.io /v1/stocks/short-interest?ticker=X
-    Login gerektirmez. short_interest + days_to_cover döner.
-    
-    Test çıktısı (2026-03-01):
-    {"settlement_date":"2026-02-13","ticker":"NVDL",
-     "short_interest":10861177,"avg_daily_volume":12233497,"days_to_cover":1}
+    askedgar.io API — per-ticker:
+      /v1/stocks/short-interest?ticker=X  → SI, DTC
+      /v1/sec/{ticker}/estimated-cash     → cash_per_share
+      /v1/fmp/company/{ticker}/profile    → price, mktCap, float (sharesOutstanding)
     """
-    print(f"\n[ASKEDGAR SI] {len(tickers)} ticker için SI çekiliyor...")
-    result   = {}
-    base_url = "https://api.askedgar.io/v1/stocks/short-interest"
-    headers  = {
-        **BROWSER_HEADERS,
-        "Accept":  "application/json",
-        "Referer": "https://app.askedgar.io/",
-        "Origin":  "https://app.askedgar.io",
-    }
+    print(f"\n[ASKEDGAR] Fetching {len(tickers)} tickers...")
+    result  = {}
+    HDR = {**BROWSER_HEADERS, "Accept": "application/json",
+           "Referer": "https://app.askedgar.io/",
+           "Origin":  "https://app.askedgar.io"}
+    API = "https://api.askedgar.io"
 
     ok, err = 0, 0
     for ticker in tickers:
+        rec = {}
         try:
-            r = requests.get(base_url, params={"ticker": ticker},
-                             headers=headers, timeout=10)
+            # 1. Short interest
+            r = requests.get(f"{API}/v1/stocks/short-interest",
+                             params={"ticker": ticker}, headers=HDR, timeout=10)
             if r.status_code == 200:
-                data = r.json()
-                si  = data.get("short_interest")
-                dtc = data.get("days_to_cover")
-                adv = data.get("avg_daily_volume")
-                dt  = data.get("settlement_date","")
-                if si:
-                    result[ticker] = {
-                        "short_interest":    si,
-                        "si_date":           dt,
-                        "days_to_cover":     dtc,
-                        "avg_daily_volume":  adv,
-                    }
-                    ok += 1
-            else:
-                err += 1
-            time.sleep(0.15)
+                d = r.json()
+                rec["short_interest"]   = d.get("short_interest")
+                rec["days_to_cover"]    = d.get("days_to_cover")
+                rec["avg_daily_volume"] = d.get("avg_daily_volume")
+                rec["si_date"]          = d.get("settlement_date","")
+                ok += 1
+            time.sleep(0.1)
+
+            # 2. Estimated cash (cash per share)
+            r2 = requests.get(f"{API}/v1/sec/{ticker}/estimated-cash",
+                              headers=HDR, timeout=8)
+            if r2.status_code == 200:
+                d2 = r2.json()
+                rec["estimated_cash"] = d2.get("estimated_cash")  # total cash $
+                rec["cash_per_share"] = d2.get("cash_per_share")  # may exist
+            time.sleep(0.1)
+
+            # 3. Company profile (float = sharesOutstanding, price)
+            r3 = requests.get(f"{API}/v1/fmp/company/{ticker}/profile",
+                              headers=HDR, timeout=8)
+            if r3.status_code == 200:
+                d3 = r3.json()
+                rec["profile_price"]   = d3.get("price")
+                rec["profile_mktcap"]  = d3.get("mktCap")
+                # sharesOutstanding is the closest to float for common stocks
+                rec["shares_outstanding"] = d3.get("sharesOutstanding")
+                # Calculate cash per share if we have cash and shares
+                if rec.get("estimated_cash") and rec.get("shares_outstanding"):
+                    rec["cash_per_share"] = round(
+                        rec["estimated_cash"] / rec["shares_outstanding"], 4)
+            time.sleep(0.1)
+
+            if rec:
+                result[ticker] = rec
         except Exception as e:
             err += 1
-    
-    print(f"    Askedgar SI: {ok} ok, {err} hata, {len(result)} ticker")
+
+    print(f"    Askedgar: {ok} SI ok, {err} err, {len(result)} total")
     SOURCE_STATUS["askedgar_si"] = f"ok:{len(result)}" if result else "error:no_data"
     return result
 
@@ -976,7 +994,10 @@ if __name__ == "__main__":
         dtc      = dtc_api if dtc_api else dtc_calc
         fd.update({"finra_si": si_sh, "finra_si_date": fi.get("si_date",""),
                    "short_float_pct": sf_pct, "diluted_float": diluted,
-                   "dtc": dtc, "effective_float": eff_fl})
+                   "dtc": dtc, "effective_float": eff_fl,
+                   "cash_per_share": fi.get("cash_per_share"),
+                   "shares_outstanding": fi.get("shares_outstanding"),
+                   "estimated_cash": fi.get("estimated_cash")})
     save("floats.json", list(float_map.values()), min_records=1)
 
     # ── S1 haritası ─────────────────────────────
@@ -1012,7 +1033,14 @@ if __name__ == "__main__":
             "finra_si_date":        fd.get("finra_si_date",""),
             "si_change":            to_float(row.get("shortint_position_change_pct")),
             "short_vol_pct":        to_float(row.get("shortvol_all_short_pct")),
+            "short_vol_pct_30d":    to_float(row.get("shortvol_all_short_pct_30d")),
+            "short_vol":            to_float(row.get("10_day_avg_vol")),  # shortvol_all_short
+            "shortint_db_pct":      to_float(row.get("shortint_db_pct")),
+            "market_cap":           to_float(row.get("market_cap")),
+            "reg_volume":           to_float(row.get("reg_volume")),
             "dtc":                  fd.get("dtc"),
+            "cash_per_share":       fd.get("cash_per_share"),
+            "shares_outstanding":   fd.get("shares_outstanding"),
             "avg_vol_10d":          avg_vol_map.get(ticker),
             "price":                to_float(row.get("reg_price")),
             "change_pct":           to_float(row.get("reg_change_pct")),
