@@ -1,16 +1,16 @@
 [
   {
+    "Symbol": "AAPD",
+    "Market": "G",
+    "Threshold List Date": ""
+  },
+  {
     "Symbol": "ACAAU",
     "Market": "G",
     "Threshold List Date": ""
   },
   {
     "Symbol": "AMZD",
-    "Market": "G",
-    "Threshold List Date": ""
-  },
-  {
-    "Symbol": "APPX",
     "Market": "G",
     "Threshold List Date": ""
   },
@@ -130,11 +130,6 @@
     "Threshold List Date": ""
   },
   {
-    "Symbol": "MGRX",
-    "Market": "S",
-    "Threshold List Date": ""
-  },
-  {
     "Symbol": "MSTX",
     "Market": "G",
     "Threshold List Date": ""
@@ -161,11 +156,6 @@
   },
   {
     "Symbol": "OKLL",
-    "Market": "G",
-    "Threshold List Date": ""
-  },
-  {
-    "Symbol": "PBOG",
     "Market": "G",
     "Threshold List Date": ""
   },
@@ -250,6 +240,11 @@
     "Threshold List Date": ""
   },
   {
+    "Symbol": "TSLS",
+    "Market": "G",
+    "Threshold List Date": ""
+  },
+  {
     "Symbol": "UOKA",
     "Market": "S",
     "Threshold List Date": ""
@@ -261,6 +256,11 @@
   },
   {
     "Symbol": "WHLR",
+    "Market": "S",
+    "Threshold List Date": ""
+  },
+  {
+    "Symbol": "XTIA",
     "Market": "S",
     "Threshold List Date": ""
   },
