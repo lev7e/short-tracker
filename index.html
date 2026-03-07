@@ -763,12 +763,19 @@ function renderS1(){
     // Ticker may be empty (pre-IPO companies not yet listed)
     // Company name shown prominently in that case
     // Ticker may be empty for pre-IPO — show "—" but make company name prominent
-    const tickerDisp = r.ticker
-      ? `<span class="ticker">${r.ticker}</span>${newDot(r.filed_date||"")}`
-      : `<span style="color:var(--muted);font-size:10px" title="${r.company||""}">—</span>`;
-    const nameLen  = r.ticker ? 28 : 36;
-    const nameDisp = (r.company||"-").slice(0,nameLen);
-    const nameStyle = r.ticker
+    // Try to extract ticker from "(TICK)" pattern in company field (backup)
+    let s1Ticker = r.ticker || "";
+    let s1Company = r.company || "-";
+    if (!s1Ticker) {
+      const tm = s1Company.match(/\(([A-Z]{1,6})\)\s*$/);
+      if (tm) { s1Ticker = tm[1]; s1Company = s1Company.slice(0, tm.index).trim(); }
+    }
+    const tickerDisp = s1Ticker
+      ? `<span class="ticker">${s1Ticker}</span>${newDot(r.filed_date||"")}`
+      : `<span style="color:var(--muted);font-size:10px" title="${s1Company}">—</span>`;
+    const nameLen  = s1Ticker ? 28 : 36;
+    const nameDisp = s1Company.slice(0, nameLen);
+    const nameStyle = s1Ticker
       ? "font-size:10px;color:var(--muted)"
       : "font-size:11px;color:var(--ylw);font-weight:500";
     return `<tr>
