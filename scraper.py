@@ -100,15 +100,33 @@ def to_float(val, default=None):
 
 
 def parse_split_ratio(s):
+    """
+    Returns ratio (old/new) ONLY for reverse splits (old > new).
+    Reverse:  "1 for 10"  → ratio=10  (10 old shares → 1 new)
+              "1:20"      → ratio=20
+              "0.1"       → ratio=10  (decimal < 1 means reverse)
+    Forward:  "2 for 1"   → None
+    """
     if not s:
         return None
-    s = str(s).lower().replace("-", " ").replace("–", " ")
-    m = re.search(r"([\d.]+)\s*(?:for|:)\s*([\d.]+)", s)
+    raw = str(s).strip()
+    # Plain decimal: "0.05" → 1/0.05=20 (reverse), "2.0" → forward
+    try:
+        v = float(raw)
+        if 0 < v < 1:
+            return round(1 / v, 4)  # e.g. 0.05 → 20:1 reverse
+        return None  # >=1 → forward or par
+    except ValueError:
+        pass
+    s = raw.lower().replace("–","-").replace("−","-")
+    # Handle "1-for-10", "1 for 10", "1:10"
+    m = re.search(r"([\d.]+)\s*(?:[-]?for[-]?|:)\s*([\d.]+)", s)
     if not m:
         return None
     new_, old_ = float(m.group(1)), float(m.group(2))
     if new_ == 0:
         return None
+    # Reverse = new < old (fewer shares after)
     return round(old_ / new_, 4) if old_ > new_ else None
 
 
@@ -183,9 +201,14 @@ def _normalize_ce_row(row, hdrs):
                                              "shortvol_all_short_pct"),
         "shortvol_all_short_pct_30d":   pick("ShortVolume%30D", "30D Short %",
                                              "shortvol_all_short_pct_30d"),
-        "pre_price":                    pick("PreMarketPrice", "Pre Price", "pre_price"),
-        "pre_change_pct":               pick("PreMarketChange%", "Pre Chg %", "pre_change_pct"),
+        "pre_price":                    pick("PreMarketPrice", "Pre Price", "pre_price",
+                                             "PreMarket Price"),
+        "pre_change_pct":               pick("PreMarketChange%", "PreMarket Change%",
+                                             "Pre Chg %", "pre_change_pct"),
         "market_cap":                   pick("MarketCap", "Market Cap", "market_cap"),
+        "shortint_db_pct":              pick("ShortInterest%DB", "SI%DB", "shortint_db_pct",
+                                             "ShortIntDB%", "ShortInterestDB%"),
+        "shortvol_all_short":           pick("ShortVolumeAll", "ShortVolume", "shortvol_all_short"),
         "_source":                      "ce_html",
     }
 
@@ -596,16 +619,27 @@ def fetch_splits():
                         ratio     = parse_split_ratio(ratio_str)
                         norm_date = normalize_date(raw_date)
                         if not sym: continue
+                        # Debug first few rows
+                        if len(rows) < 5:
+                            print(f"    Yahoo row: sym={sym} ratio={ratio_str!r} parsed={ratio} date={norm_date}")
                         try:
                             from datetime import date as _date
                             split_dt   = datetime.strptime(norm_date, "%Y-%m-%d").date() if norm_date else None
                             is_upcoming = split_dt and split_dt >= _date.today()
                         except Exception:
                             is_upcoming = True
+                        # Mark as reverse if ratio < 1 or ratio_str looks like "1:X" with X>1
+                        is_rev = ratio is not None
+                        if not is_rev and ratio_str:
+                            # Fallback: any "1:N" or "1-for-N" where N>1 → reverse
+                            rm = re.search(r"(\d+)\s*(?::|for)\s*(\d+)", ratio_str.lower().replace("-"," "))
+                            if rm and float(rm.group(2)) > float(rm.group(1)):
+                                is_rev = True
+                                ratio = round(float(rm.group(2))/float(rm.group(1)), 4)
                         rows.append({
                             "Symbol": sym, "Ratio": ratio_str,
                             "Date": norm_date, "Company": row.get("Company",""),
-                            "is_reverse": ratio is not None, "split_ratio": ratio,
+                            "is_reverse": is_rev, "split_ratio": ratio,
                             "split_date": norm_date,
                             "list_type": "upcoming" if is_upcoming else "recent",
                         })
@@ -775,10 +809,19 @@ def fetch_sec_s1():
                         ticker = first.get("ticker","").strip()
                     else:
                         # String format: "COMPANY NAME (CIK 0002072184)"
+                        # OR:            "ARVANA INC (AVNI)"  ← ticker in parens
                         raw = str(first)
                         entity = re.sub(r"\s*\(CIK[^)]*\)", "", raw).strip()
                 elif isinstance(display, str) and display:
                     entity = re.sub(r"\s*\(CIK[^)]*\)", "", display).strip()
+
+                # Extract ticker from "(TICK)" pattern in entity name
+                # e.g. "ARVANA INC (AVNI)" → ticker="AVNI", entity="ARVANA INC"
+                if not ticker and entity:
+                    tm = re.search(r"\(([A-Z]{1,6})\)\s*$", entity)
+                    if tm:
+                        ticker = tm.group(1)
+                        entity = entity[:tm.start()].strip()
 
                 # Fallback fields
                 if not entity:
