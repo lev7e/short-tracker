@@ -360,6 +360,10 @@ def fetch_chartexchange():
                             rows = [_normalize_ce_row(r, hdrs) for r in dict_rows]
                             rows = [r for r in rows if r.get("ticker","").strip()]
                             print(f"    Normalize: {len(rows)} ticker")
+                            if rows:
+                                raw0 = dict_rows[0] if dict_rows else {}
+                                print(f"    CE raw row keys: {list(raw0.keys())[:12]}")
+                                print(f"    CE raw row vals: {list(raw0.values())[:12]}")
                         if not rows:
                             rows = None
 
@@ -385,9 +389,17 @@ def fetch_chartexchange():
 
     if all_rows:
         SOURCE_STATUS["chartexchange"] = f"ok:{len(all_rows)}"
-        # Debug: ilk satırın C2B değerini logla
         sample = all_rows[0]
-        print(f"    Sample: ticker={sample.get('ticker')} c2b={sample.get('borrow_fee_rate_ib')} float={sample.get('shares_float')}")
+        # Log all CE fields to diagnose missing values
+        sv  = sample.get("shortvol_all_short_pct")
+        sv3 = sample.get("shortvol_all_short_pct_30d")
+        sic = sample.get("shortint_position_change_pct")
+        pre = sample.get("pre_change_pct")
+        print(f"    CE sample: ticker={sample.get('ticker')} c2b={sample.get('borrow_fee_rate_ib')} "
+              f"float={sample.get('shares_float')} sv%={sv} sv30d%={sv3} si_chg%={sic} pre%={pre}")
+        # Show raw row to see what CE actually sends
+        raw_keys = [k for k in sample.keys() if not k.startswith("_")]
+        print(f"    CE fields: {raw_keys}")
 
     # CE yetersizse iborrowdesk.com'dan ek veri çek
     if len(all_rows) < 10:
@@ -644,6 +656,7 @@ def fetch_splits():
                         sa_rows = arr
                 if sa_rows:
                     print(f"    SA __NEXT_DATA__: {len(sa_rows)} rows, sample keys: {list(sa_rows[0].keys())[:8]}")
+                    print(f"    SA sample row: {dict(list(sa_rows[0].items())[:6])}")
 
             # HTML table fallback
             if not sa_rows:
@@ -883,13 +896,13 @@ def fetch_askedgar_si(tickers: list) -> dict:
                 ok += 1
             time.sleep(0.1)
 
-            # 2. Estimated cash (cash per share)
+            # 2. Estimated cash from SEC
             r2 = requests.get(f"{API}/v1/sec/{ticker}/estimated-cash",
                               headers=HDR, timeout=8)
             if r2.status_code == 200:
                 d2 = r2.json()
-                rec["estimated_cash"] = d2.get("estimated_cash")  # total cash $
-                rec["cash_per_share"] = d2.get("cash_per_share")  # may exist
+                rec["estimated_cash"] = d2.get("estimated_cash")
+                rec["cash_per_share"] = d2.get("cash_per_share")
             time.sleep(0.1)
 
             # 3. Company profile (float = sharesOutstanding, price)
@@ -901,18 +914,26 @@ def fetch_askedgar_si(tickers: list) -> dict:
                 rec["profile_mktcap"]     = d3.get("mktCap")
                 rec["shares_outstanding"] = d3.get("sharesOutstanding")
                 # cash & cashPerShare may come directly from profile
-                rec["cash_per_share"] = (
-                    d3.get("cashPerShare") or
-                    d3.get("cashPerShareTTM") or
-                    d3.get("cash_per_share") or
-                    rec.get("cash_per_share")
-                )
-                # Fallback: compute from estimated_cash / sharesOutstanding
-                if not rec.get("cash_per_share"):
-                    cash  = rec.get("estimated_cash")
-                    shr   = d3.get("sharesOutstanding")
-                    if cash and shr and shr > 0:
-                        rec["cash_per_share"] = round(cash / shr, 4)
+                # FMP profile has these cash fields
+                cps = (d3.get("cashPerShare") or d3.get("cashPerShareTTM") or
+                       d3.get("cash_per_share"))
+                # Compute from total cash / shares if direct field missing
+                if not cps:
+                    total_cash = (d3.get("totalCash") or d3.get("cash") or
+                                  d3.get("cashAndCashEquivalents") or
+                                  rec.get("estimated_cash"))
+                    shr = d3.get("sharesOutstanding") or d3.get("shares")
+                    if total_cash and shr and float(shr) > 0:
+                        cps = round(float(total_cash) / float(shr), 4)
+                if not cps and rec.get("estimated_cash"):
+                    shr = d3.get("sharesOutstanding")
+                    if shr and float(shr) > 0:
+                        cps = round(rec["estimated_cash"] / float(shr), 4)
+                if cps:
+                    rec["cash_per_share"] = cps
+                # Debug first ticker
+                if ok <= 1:
+                    print(f"    Askedgar {ticker}: cash={rec.get('estimated_cash')} cps={cps} shr={d3.get('sharesOutstanding')} profile_keys={list(d3.keys())[:8]}")
             time.sleep(0.1)
 
             if rec:
