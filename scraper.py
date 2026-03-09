@@ -113,6 +113,8 @@ def parse_split_ratio(s):
     # Plain decimal: "0.05" → 1/0.05=20 (reverse), "2.0" → forward
     try:
         v = float(raw)
+        if v == 0:
+            return None  # guard division by zero
         if 0 < v < 1:
             return round(1 / v, 4)  # e.g. 0.05 → 20:1 reverse
         return None  # >=1 → forward or par
@@ -124,7 +126,7 @@ def parse_split_ratio(s):
     if not m:
         return None
     new_, old_ = float(m.group(1)), float(m.group(2))
-    if new_ == 0:
+    if new_ == 0 or old_ == 0:
         return None
     # Reverse = new < old (fewer shares after)
     return round(old_ / new_, 4) if old_ > new_ else None
@@ -197,10 +199,17 @@ def _normalize_ce_row(row, hdrs):
                                              "shortint_pct", "ShortInt%"),
         "shortint_position_change_pct": pick("SI%Change", "SI Chg %", "SIChange",
                                              "shortint_position_change_pct"),
-        "shortvol_all_short_pct":       pick("ShortVolume%", "Short Vol %",
+        "shortvol_all_short_pct":       pick(
+                                             "ShortVolume(SV) %",   # actual CE col
+                                             "ShortVolume(SV) %",
+                                             "ShortVolume%", "Short Vol %",
                                              "shortvol_all_short_pct"),
         "shortvol_all_short_pct_30d":   pick("ShortVolume%30D", "30D Short %",
                                              "shortvol_all_short_pct_30d"),
+        "shortvol_all_short":           pick(
+                                             "ShortVolume(SV)",         # actual CE col
+                                             "ShortVolumeAll", "ShortVolume",
+                                             "shortvol_all_short"),
         "pre_price":                    pick("PreMarketPrice", "Pre Price", "pre_price",
                                              "PreMarket Price"),
         "pre_change_pct":               pick("PreMarketChange%", "PreMarket Change%",
@@ -208,7 +217,6 @@ def _normalize_ce_row(row, hdrs):
         "market_cap":                   pick("MarketCap", "Market Cap", "market_cap"),
         "shortint_db_pct":              pick("ShortInterest%DB", "SI%DB", "shortint_db_pct",
                                              "ShortIntDB%", "ShortInterestDB%"),
-        "shortvol_all_short":           pick("ShortVolumeAll", "ShortVolume", "shortvol_all_short"),
         "_source":                      "ce_html",
     }
 
@@ -808,12 +816,20 @@ def fetch_sec_s1():
                     entity = re.sub(r"\s*\(CIK[^)]*\)", "", display).strip()
 
                 # Extract ticker from "(TICK)" pattern in entity name
-                # e.g. "ARVANA INC (AVNI)" → ticker="AVNI", entity="ARVANA INC"
+                # CIK already stripped, so "(AVAX)" at end → ticker
+                # e.g. "ARVANA INC (AVNI)" or "Grayscale Trust (AVAX)"
                 if not ticker and entity:
+                    # Try last parens group that looks like a ticker
                     tm = re.search(r"\(([A-Z]{1,6})\)\s*$", entity)
                     if tm:
                         ticker = tm.group(1)
                         entity = entity[:tm.start()].strip()
+                    # Also try: "NAME (TICK)  " with trailing spaces
+                    elif re.search(r"\([A-Z]{1,6}\)", entity):
+                        tm2 = re.findall(r"\(([A-Z]{1,6})\)", entity)
+                        if tm2:
+                            ticker = tm2[-1]  # take last ticker-like paren
+                            entity = re.sub(r"\s*\([A-Z]{1,6}\)\s*$", "", entity).strip()
 
                 # Fallback fields
                 if not entity:
@@ -929,11 +945,21 @@ def fetch_askedgar_si(tickers: list) -> dict:
                     shr = d3.get("sharesOutstanding")
                     if shr and float(shr) > 0:
                         cps = round(rec["estimated_cash"] / float(shr), 4)
+                # Derive shares from mktCap/price if sharesOutstanding missing
+                if not cps and rec.get("estimated_cash"):
+                    mkt  = d3.get("mktCap")
+                    prc  = d3.get("price")
+                    if mkt and prc and float(prc) > 0:
+                        implied_shares = float(mkt) / float(prc)
+                        if implied_shares > 0:
+                            cps = round(rec["estimated_cash"] / implied_shares, 4)
                 if cps:
                     rec["cash_per_share"] = cps
                 # Debug first ticker
                 if ok <= 1:
-                    print(f"    Askedgar {ticker}: cash={rec.get('estimated_cash')} cps={cps} shr={d3.get('sharesOutstanding')} profile_keys={list(d3.keys())[:8]}")
+                    mkt = d3.get("mktCap"); prc = d3.get("price")
+                    impl_shr = round(float(mkt)/float(prc),0) if mkt and prc and float(prc)>0 else None
+                    print(f"    Askedgar {ticker}: cash={rec.get('estimated_cash')} cps={cps} mktCap={mkt} price={prc} implied_shares={impl_shr}")
             time.sleep(0.1)
 
             if rec:
