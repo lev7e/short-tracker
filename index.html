@@ -798,11 +798,9 @@ function renderC2B(){
   body.innerHTML=rows.map(r=>{
     const t  =r.symbol||r.ticker||r.Symbol||"-";
     const c2b=parseFloat(r.borrow_fee_rate_ib||r.borrowFeeRateIb||0);
-    // Try every possible field name variant for SV%
-    const sv  = r.shortvol_all_short_pct ?? r.shortvolAllShortPct ?? 
-                r["ShortVolume%"] ?? r.short_vol_pct ?? null;
-    const sv3 = r.shortvol_all_short_pct_30d ?? r.shortvolAllShortPct30d ?? 
-                r["ShortVolume%30D"] ?? r.short_vol_pct_30d ?? null;
+    // CE actual field name after normalize: shortvol_all_short_pct
+    const sv  = r.shortvol_all_short_pct ?? r.short_vol_pct ?? null;
+    const sv3 = r.shortvol_all_short_pct_30d ?? r.short_vol_pct_30d ?? null;
     return `<tr class="${inWL(t)?"wl":""}">
       <td><span class="ticker">${t}</span>${star(t)}</td>
       <td><span class="${c2b>=100?"neg":c2b>=50?"warn":""}">${c2b?c2b+"%":"-"}</span></td>
