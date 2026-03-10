@@ -135,8 +135,8 @@
     "Threshold List Date": ""
   },
   {
-    "Symbol": "NCI",
-    "Market": "S",
+    "Symbol": "NFXL",
+    "Market": "G",
     "Threshold List Date": ""
   },
   {
@@ -151,11 +151,6 @@
   },
   {
     "Symbol": "OKLL",
-    "Market": "G",
-    "Threshold List Date": ""
-  },
-  {
-    "Symbol": "PFSA",
     "Market": "G",
     "Threshold List Date": ""
   },
@@ -185,11 +180,6 @@
     "Threshold List Date": ""
   },
   {
-    "Symbol": "RIME",
-    "Market": "S",
-    "Threshold List Date": ""
-  },
-  {
     "Symbol": "RKLZ",
     "Market": "G",
     "Threshold List Date": ""
@@ -210,6 +200,11 @@
     "Threshold List Date": ""
   },
   {
+    "Symbol": "SMCL",
+    "Market": "G",
+    "Threshold List Date": ""
+  },
+  {
     "Symbol": "SMCX",
     "Market": "G",
     "Threshold List Date": ""
@@ -225,6 +220,11 @@
     "Threshold List Date": ""
   },
   {
+    "Symbol": "STAK",
+    "Market": "S",
+    "Threshold List Date": ""
+  },
+  {
     "Symbol": "SVRN",
     "Market": "S",
     "Threshold List Date": ""
@@ -232,6 +232,11 @@
   {
     "Symbol": "TSLS",
     "Market": "G",
+    "Threshold List Date": ""
+  },
+  {
+    "Symbol": "TURB",
+    "Market": "S",
     "Threshold List Date": ""
   },
   {
