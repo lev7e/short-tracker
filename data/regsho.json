@@ -5,11 +5,6 @@
     "Threshold List Date": ""
   },
   {
-    "Symbol": "ACAAU",
-    "Market": "G",
-    "Threshold List Date": ""
-  },
-  {
     "Symbol": "AMZD",
     "Market": "G",
     "Threshold List Date": ""
@@ -40,18 +35,18 @@
     "Threshold List Date": ""
   },
   {
-    "Symbol": "CISS",
-    "Market": "S",
-    "Threshold List Date": ""
-  },
-  {
-    "Symbol": "CMMB",
+    "Symbol": "CXAI",
     "Market": "S",
     "Threshold List Date": ""
   },
   {
     "Symbol": "DUOG",
     "Market": "G",
+    "Threshold List Date": ""
+  },
+  {
+    "Symbol": "DXST",
+    "Market": "S",
     "Threshold List Date": ""
   },
   {
@@ -125,11 +120,6 @@
     "Threshold List Date": ""
   },
   {
-    "Symbol": "LGHL",
-    "Market": "S",
-    "Threshold List Date": ""
-  },
-  {
     "Symbol": "MOBX",
     "Market": "S",
     "Threshold List Date": ""
@@ -156,11 +146,6 @@
   },
   {
     "Symbol": "NOWL",
-    "Market": "G",
-    "Threshold List Date": ""
-  },
-  {
-    "Symbol": "NVDL",
     "Market": "G",
     "Threshold List Date": ""
   },
@@ -250,17 +235,17 @@
     "Threshold List Date": ""
   },
   {
+    "Symbol": "UAE",
+    "Market": "G",
+    "Threshold List Date": ""
+  },
+  {
     "Symbol": "UOKA",
     "Market": "S",
     "Threshold List Date": ""
   },
   {
     "Symbol": "VEEE",
-    "Market": "S",
-    "Threshold List Date": ""
-  },
-  {
-    "Symbol": "WHLR",
     "Market": "S",
     "Threshold List Date": ""
   },
