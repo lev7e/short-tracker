@@ -1,14 +1,7 @@
 #!/usr/bin/env python3
-"""
-Short Tracker - Multi-Source Scraper
-Runs via GitHub Actions, outputs data.json
-"""
+"""Short Tracker - Multi-Source Scraper"""
 
-import requests
-import json
-import re
-import time
-import sys
+import requests, json, re, time, sys
 from datetime import datetime, date, timedelta
 from bs4 import BeautifulSoup
 
@@ -34,43 +27,50 @@ def is_ticker(s):
 
 # ── 1. RegSHO ─────────────────────────────────────────────────────────────────
 def scrape_regsho():
-    print("→ RegSHO (NASDAQ Trader TXT)...")
+    print("→ RegSHO...")
     tickers = set()
     date_str = None
-
-    prefixes = ["nasdaqth", "nyseth", "arcath"]
     for delta in range(7):
         d = date.today() - timedelta(days=delta)
         if d.weekday() >= 5:
             continue
         ds = d.strftime("%Y%m%d")
-        found_any = False
-        for prefix in prefixes:
+        found = False
+        for prefix in ["nasdaqth", "nyseth", "arcath"]:
             url = f"https://www.nasdaqtrader.com/dynamic/symdir/regsho/{prefix}{ds}.txt"
             r = safe_get(url)
             if not r or r.status_code != 200:
                 continue
-            # File format: Symbol|SecurityName|Market|RegSHOThresholdFlag|Rule4320Flag
             for line in r.text.strip().splitlines():
-                parts = line.split("|")
-                if len(parts) >= 1:
-                    t = parts[0].strip()
-                    if is_ticker(t):
-                        tickers.add(t)
-                        found_any = True
-        if found_any:
+                t = line.split("|")[0].strip()
+                if is_ticker(t):
+                    tickers.add(t)
+                    found = True
+        if found:
             date_str = d.strftime("%b %-d, %Y")
             break
-
-    print(f"   {len(tickers)} valid tickers ({date_str})")
+    print(f"   {len(tickers)} tickers ({date_str})")
     return sorted(tickers), date_str
 
 # ── 2. ChartExchange Screener ─────────────────────────────────────────────────
+# view_cols order (after optional leading # col):
+# display, borrow_fee_rate_ib, borrow_fee_avail_ib, shares_float,
+# market_cap, reg_price, reg_change_pct, reg_volume, 10_day_avg_vol,
+# shortvol_all_short, shortint_db_pct, shortint_pct,
+# shortint_position_change_pct, shortvol_all_short_pct,
+# shortvol_all_short_pct_30d, pre_price, pre_change_pct
+FIELD_ORDER = [
+    "ticker", "borrow_rate", "avail_shares", "float",
+    "market_cap", "price", "change_pct", "volume", "avg_vol_10d",
+    "shortvol", "shortint_db_pct", "short_int_pct",
+    "si_change_pct", "shortvol_pct", "shortvol_pct_30d",
+    "pre_price", "pre_change_pct",
+]
+
 def scrape_chartexchange():
     print("→ ChartExchange Screener...")
     results = []
     page = 1
-
     base = (
         "https://chartexchange.com/screener/?page={page}"
         "&equity_type=ad,cs"
@@ -89,397 +89,146 @@ def scrape_chartexchange():
         "&section_saved=hide&section_select=hide&section_filter=hide&section_view=hide"
     )
 
-    # Expected column order from view_cols (ChartExchange prepends a "#" counter col)
-    # So actual HTML cols: [#, display, borrow_fee_rate_ib, borrow_fee_avail_ib, shares_float,
-    #                        market_cap, reg_price, reg_change_pct, reg_volume, ...]
-    COL_MAP = {
-        "display":                       "ticker",
-        "symbol":                        "ticker",
-        "borrowfee%ibkr":                "borrow_rate",
-        "borrow_fee_rate_ib":            "borrow_rate",
-        "borrowsharesavailableibkr":     "avail_shares",
-        "borrow_fee_avail_ib":           "avail_shares",
-        "sharesavailableibkr":           "avail_shares",
-        "sharesfloat":                   "float",
-        "shares_float":                  "float",
-        "float":                         "float",
-        "marketcap":                     "market_cap",
-        "market_cap":                    "market_cap",
-        "price":                         "price",
-        "reg_price":                     "price",
-        "change%":                       "change_pct",
-        "chg%":                          "change_pct",
-        "reg_change_pct":                "change_pct",
-        "volume":                        "volume",
-        "reg_volume":                    "volume",
-        "shortint%":                     "short_int_pct",
-        "shortint_pct":                  "short_int_pct",
-        "shortintpositionchange%":       "si_change_pct",
-        "shortint_position_change_pct":  "si_change_pct",
-    }
-
     while True:
-        url = base.format(page=page)
-        r = safe_get(url)
+        r = safe_get(base.format(page=page))
         if not r:
             break
 
         soup = BeautifulSoup(r.text, "lxml")
         table = soup.find("table")
         if not table:
-            print(f"  No table on page {page}", file=sys.stderr)
+            print(f"  No table page {page}", file=sys.stderr)
             break
 
-        # Parse header row to build column index → field mapping
-        header_row = table.find("tr")
-        raw_headers = [th.get_text(strip=True) for th in header_row.find_all(["th","td"])]
-
-        col_to_field = {}
-        for i, h in enumerate(raw_headers):
-            key = h.lower().replace(" ", "").replace("_", "").replace("%", "%").strip()
-            # try exact then stripped
-            field = COL_MAP.get(h.lower().strip()) or COL_MAP.get(key)
-            if field:
-                col_to_field[i] = field
+        # Detect if first column is a row-counter (#) by checking header text
+        header_cells = table.find("tr").find_all(["th", "td"])
+        header_texts = [c.get_text(strip=True) for c in header_cells]
+        # If first header is "#" or a number, data starts at col 1
+        offset = 1 if (header_texts and header_texts[0] in ("#", "", "No", "Row")) else 0
+        # Also detect by finding which col has "Symbol" / "display" label
+        for i, h in enumerate(header_texts):
+            hl = h.lower().replace(" ", "")
+            if hl in ("symbol", "display", "ticker"):
+                offset = i
+                break
 
         data_rows = table.find_all("tr")[1:]
         if not data_rows:
             break
 
-        page_count = 0
+        count = 0
         for row in data_rows:
             cells = [td.get_text(strip=True) for td in row.find_all("td")]
             if not cells:
                 continue
 
-            rec = {f: "-" for f in ["ticker","borrow_rate","avail_shares","float",
-                                     "market_cap","price","change_pct","volume",
-                                     "short_int_pct","si_change_pct"]}
-
-            for i, field in col_to_field.items():
-                if i < len(cells) and cells[i]:
-                    rec[field] = cells[i]
-
-            # Fallback: if no col_to_field mapping worked, guess by position
-            if rec["ticker"] == "-":
-                # Find first cell that looks like a ticker
-                for i, c in enumerate(cells):
-                    if is_ticker(c):
-                        rec["ticker"] = c
-                        break
-
-            if not rec["ticker"] or rec["ticker"] == "-" or not is_ticker(rec["ticker"]):
+            # Slice from offset
+            vals = cells[offset:]
+            if not vals:
                 continue
 
-            results.append(rec)
-            page_count += 1
+            # First value should be ticker
+            ticker = vals[0].strip() if vals else ""
+            if not is_ticker(ticker):
+                # Try to find ticker anywhere in the row
+                ticker = next((c for c in cells if is_ticker(c)), "")
+            if not ticker:
+                continue
 
-        print(f"   Page {page}: {page_count} rows (total {len(results)})")
-        if page_count < 95:
+            rec = {"ticker": ticker}
+            for i, field in enumerate(FIELD_ORDER[1:], start=1):
+                rec[field] = vals[i].strip() if i < len(vals) else "-"
+                if not rec[field]:
+                    rec[field] = "-"
+
+            results.append(rec)
+            count += 1
+
+        print(f"   Page {page}: {count} rows")
+        if count < 95:
             break
         page += 1
         time.sleep(1.0)
 
-    print(f"   Total screener: {len(results)} rows")
+    print(f"   Total: {len(results)}")
     return results
 
-# ── 3. Float from Finviz ──────────────────────────────────────────────────────
+# ── 3. AskEdgar Float ─────────────────────────────────────────────────────────
 def scrape_float_askedgar(tickers):
-    """
-    Fetch float from app.askedgar.io/[TICKER].
-    Tries JSON first, then __NEXT_DATA__, then HTML text scan.
-    """
-    print(f"→ AskEdgar Float for {len(tickers)} tickers...")
+    print(f"→ AskEdgar Float ({len(tickers)} tickers)...")
     floats = {}
-    MAX = 100  # cap to avoid long runtimes
-
-    # Regex patterns that match float values in text:
-    # "Float: 1.23M", "Shares Float 4,567,890", "float":1234567", etc.
-    FLOAT_PATTERNS = [
-        re.compile(r'"(?:sharesFloat|shares_float|float(?:Shares)?|floatShares)"\s*:\s*"?([0-9][0-9,\.]+)"?', re.I),
-        re.compile(r'(?:shares?\s+)?float\s*[:\-=]\s*([0-9][0-9,\.]+\s*[MBK]?)', re.I),
-        re.compile(r'float\s*</[^>]+>\s*<[^>]+>\s*([0-9][0-9,\.]+\s*[MBK]?)', re.I),
+    patterns = [
+        re.compile(r'"(?:sharesFloat|shares_float|floatShares|shareFloat)"\s*:\s*"?([0-9][0-9,\.]+)"?', re.I),
+        re.compile(r'(?:shares?\s*)?float\s*[:\-=]\s*([0-9][0-9,\.]+\s*[MBK]?)', re.I),
+        re.compile(r'"float"\s*:\s*([0-9][0-9,\.]+)', re.I),
     ]
 
-    def parse_float_val(s):
-        """Normalise e.g. '4.5M' → '4.5M', '4500000' → '4500000'"""
-        s = s.strip().replace(",", "")
-        return s if s else None
-
-    for i, ticker in enumerate(tickers[:MAX]):
-        url = f"https://app.askedgar.io/{ticker}"
-        r = safe_get(url, headers={**S.headers, "Referer": "https://app.askedgar.io/"})
+    for i, ticker in enumerate(tickers[:100]):
+        r = safe_get(f"https://app.askedgar.io/{ticker}",
+                     headers={**S.headers, "Referer": "https://app.askedgar.io/"})
         if not r:
             continue
 
         val = None
         ct = r.headers.get("content-type", "")
 
-        # ── JSON response ────────────────────────────────────────────────────
         if "json" in ct:
             try:
                 d = r.json()
-                # Common key names
-                for k in ("sharesFloat", "shares_float", "float", "floatShares",
-                          "shareFloat", "Float", "sharesOutstandingFloat"):
-                    if k in d and d[k]:
-                        val = parse_float_val(str(d[k]))
+                for k in ("sharesFloat","shares_float","float","floatShares","shareFloat","Float"):
+                    if d.get(k):
+                        val = str(d[k])
                         break
-                # Nested under data/stats/fundamentals
                 if not val:
-                    for section in ("data", "stats", "fundamentals", "summary"):
-                        if isinstance(d.get(section), dict):
-                            for k in ("sharesFloat", "shares_float", "float", "floatShares"):
-                                if d[section].get(k):
-                                    val = parse_float_val(str(d[section][k]))
+                    for section in ("data","stats","fundamentals","summary"):
+                        sec = d.get(section)
+                        if isinstance(sec, dict):
+                            for k in ("sharesFloat","shares_float","float","floatShares"):
+                                if sec.get(k):
+                                    val = str(sec[k])
                                     break
                         if val:
                             break
             except Exception:
                 pass
 
-        # ── HTML / Next.js ───────────────────────────────────────────────────
         if not val:
             text = r.text
-
-            # __NEXT_DATA__
+            # Check __NEXT_DATA__
             m = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', text, re.S)
             if m:
                 try:
-                    nd = json.loads(m.group(1))
-                    nd_str = json.dumps(nd)
-                    for pat in FLOAT_PATTERNS:
+                    nd_str = m.group(1)
+                    for pat in patterns:
                         fm = pat.search(nd_str)
                         if fm:
-                            val = parse_float_val(fm.group(1))
+                            val = fm.group(1).strip()
                             break
                 except Exception:
                     pass
-
-            # Raw text scan
             if not val:
-                for pat in FLOAT_PATTERNS:
+                for pat in patterns:
                     fm = pat.search(text)
                     if fm:
-                        candidate = parse_float_val(fm.group(1))
-                        # Sanity check: float should be a number or end with M/B/K
-                        if candidate and re.match(r'^[\d,\.]+[MBK]?$', candidate):
+                        candidate = fm.group(1).strip()
+                        if re.match(r'^[\d,\.]+[MBK]?$', candidate):
                             val = candidate
                             break
 
         if val:
-            floats[ticker] = val
+            floats[ticker] = val.replace(",", "")
 
-        if (i + 1) % 15 == 0:
-            print(f"   {i+1}/{min(len(tickers), MAX)} ({len(floats)} found)")
-            time.sleep(0.5)
-        time.sleep(0.35)
+        if (i+1) % 20 == 0:
+            print(f"   {i+1}/{min(len(tickers),100)} ({len(floats)} found)")
+        time.sleep(0.4)
 
-    print(f"   AskEdgar: float for {len(floats)}/{min(len(tickers), MAX)} tickers")
+    print(f"   Got float: {len(floats)}")
     return floats
 
-# ── 4. Reverse Splits — StockAnalysis ────────────────────────────────────────
+# ── 4. Recent Splits — StockAnalysis ─────────────────────────────────────────
 def scrape_splits_recent():
     print("→ StockAnalysis Recent Splits...")
     r = safe_get("https://stockanalysis.com/actions/splits/")
-    if not r:
-        return []
-
-    soup = BeautifulSoup(r.text, "lxml")
-    results = []
-    table = soup.find("table")
-    if not table:
-        # Try __NEXT_DATA__
-        m = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', r.text, re.S)
-        if m:
-            try:
-                nd = json.loads(m.group(1))
-                rows = nd["props"]["pageProps"].get("data") or []
-                for row in rows:
-                    ratio = str(row.get("splitRatio") or row.get("ratio") or "")
-                    # Reverse split: new < old, e.g. "1:10" or "1-for-10"
-                    if re.search(r'1\s*[:/]\s*\d+', ratio) or \
-                       re.search(r'1.for.\d+', ratio, re.I):
-                        results.append({
-                            "ticker":  str(row.get("symbol") or ""),
-                            "company": str(row.get("name") or ""),
-                            "ratio":   ratio,
-                            "date":    str(row.get("date") or ""),
-                        })
-                print(f"   {len(results)} recent reverse splits (NEXT_DATA)")
-                return results
-            except Exception as e:
-                print(f"  NEXT_DATA error: {e}", file=sys.stderr)
-        print("  No table found", file=sys.stderr)
-        return []
-
-    # Parse HTML table — headers: Date | Ticker | Company | Ratio | Type (varies)
-    headers = [th.get_text(strip=True).lower() for th in table.find("tr").find_all(["th","td"])]
-
-    def col_idx(names):
-        for n in names:
-            for i, h in enumerate(headers):
-                if n in h:
-                    return i
-        return None
-
-    i_ticker  = col_idx(["symbol","ticker"])
-    i_company = col_idx(["company","name"])
-    i_ratio   = col_idx(["ratio","split"])
-    i_date    = col_idx(["date"])
-    i_type    = col_idx(["type"])
-
-    for row in table.find_all("tr")[1:]:
-        cells = [td.get_text(strip=True) for td in row.find_all("td")]
-        if not cells:
-            continue
-
-        def gc(idx):
-            return cells[idx] if idx is not None and idx < len(cells) else ""
-
-        ratio = gc(i_ratio)
-        rtype = gc(i_type).lower() if i_type is not None else ""
-
-        # Keep only reverse splits
-        is_reverse = (
-            re.search(r'1\s*[:/]\s*\d+', ratio) or
-            re.search(r'1.for.\d+', ratio, re.I) or
-            "reverse" in rtype
-        )
-        if not is_reverse:
-            continue
-
-        results.append({
-            "ticker":  gc(i_ticker),
-            "company": gc(i_company),
-            "ratio":   ratio or "reverse",
-            "date":    gc(i_date),
-        })
-
-    print(f"   {len(results)} recent reverse splits")
-    return results
-
-# ── 5. Upcoming Splits — TipRanks ────────────────────────────────────────────
-def scrape_splits_upcoming():
-    print("→ TipRanks Upcoming Splits...")
-    try:
-        from playwright.sync_api import sync_playwright
-        with sync_playwright() as pw:
-            browser = pw.chromium.launch(headless=True, args=["--no-sandbox","--disable-dev-shm-usage"])
-            ctx = browser.new_context(user_agent=S.headers["User-Agent"])
-            page = ctx.new_page()
-            page.goto("https://www.tipranks.com/calendars/stock-splits/upcoming",
-                      wait_until="domcontentloaded", timeout=35000)
-            page.wait_for_timeout(5000)
-            html = page.content()
-            browser.close()
-
-        soup = BeautifulSoup(html, "lxml")
-        results = []
-        table = soup.find("table")
-        if not table:
-            print("  TipRanks: no table found", file=sys.stderr)
-            return []
-
-        # Detect header columns
-        header_row = table.find("tr")
-        headers = [th.get_text(strip=True).lower() for th in header_row.find_all(["th","td"])]
-        print(f"   TipRanks headers: {headers}")
-
-        def col_idx(names):
-            for n in names:
-                for i, h in enumerate(headers):
-                    if n in h:
-                        return i
-            return None
-
-        i_ticker  = col_idx(["ticker","symbol"])
-        i_company = col_idx(["company","name"])
-        i_ratio   = col_idx(["ratio","split"])
-        i_date    = col_idx(["date","ex-date","announcement"])
-        i_type    = col_idx(["type"])
-
-        for row in table.find_all("tr")[1:]:
-            cells = [td.get_text(strip=True) for td in row.find_all("td")]
-            if not cells:
-                continue
-
-            def gc(idx):
-                return cells[idx] if idx is not None and idx < len(cells) else ""
-
-            rtype = gc(i_type).lower() if i_type is not None else ""
-            ratio = gc(i_ratio)
-
-            # Only reverse splits
-            is_reverse = "reverse" in rtype or re.search(r'1\s*[:/]\s*\d+', ratio)
-            if i_type is not None and not is_reverse:
-                continue  # skip forward splits if we can detect type
-
-            results.append({
-                "ticker":  gc(i_ticker),
-                "company": gc(i_company),
-                "ratio":   ratio or rtype or "reverse",
-                "date":    gc(i_date),
-            })
-
-        print(f"   {len(results)} upcoming splits")
-        return results
-
-    except ImportError:
-        print("  Playwright not installed", file=sys.stderr)
-        return []
-    except Exception as e:
-        print(f"  TipRanks error: {e}", file=sys.stderr)
-        return []
-
-# ── 6. Ticker Changes ─────────────────────────────────────────────────────────
-def scrape_changes_nasdaq():
-    print("→ NASDAQ Ticker Changes...")
-    # Try JSON API first
-    r = safe_get(
-        "https://api.nasdaq.com/api/quote/list-type/symbolchangehistory?offset=0&limit=100",
-        headers={**S.headers, "Accept": "application/json", "Origin": "https://www.nasdaq.com"}
-    )
-    if r:
-        try:
-            d = r.json()
-            rows = ((d.get("data") or {}).get("data") or
-                    d.get("rows") or d.get("results") or [])
-            if rows:
-                out = []
-                for row in rows:
-                    new_t = str(row.get("newSymbol") or row.get("symbol") or "")
-                    old_t = str(row.get("oldSymbol") or row.get("previousSymbol") or "")
-                    if new_t:
-                        out.append({"new_ticker": new_t, "old_ticker": old_t,
-                                    "date": str(row.get("dateOfChange") or row.get("date") or ""),
-                                    "source": "NASDAQ"})
-                if out:
-                    print(f"   {len(out)} NASDAQ changes (API)")
-                    return out
-        except Exception:
-            pass
-
-    # HTML fallback
-    r = safe_get("https://www.nasdaq.com/market-activity/stocks/symbol-change-history?page=1&rows_per_page=100")
-    if not r:
-        return []
-    soup = BeautifulSoup(r.text, "lxml")
-    table = soup.find("table")
-    results = []
-    if table:
-        for row in table.find_all("tr")[1:]:
-            cells = [td.get_text(strip=True) for td in row.find_all("td")]
-            if len(cells) >= 2:
-                results.append({"new_ticker": cells[0], "old_ticker": cells[1],
-                                 "date": cells[2] if len(cells) > 2 else "",
-                                 "source": "NASDAQ"})
-    print(f"   {len(results)} NASDAQ changes")
-    return results
-
-def scrape_changes_stockanalysis():
-    print("→ StockAnalysis Ticker Changes...")
-    r = safe_get("https://stockanalysis.com/actions/changes/")
     if not r:
         return []
 
@@ -491,13 +240,16 @@ def scrape_changes_stockanalysis():
             rows = nd["props"]["pageProps"].get("data") or []
             out = []
             for row in rows:
-                out.append({
-                    "new_ticker": str(row.get("newSymbol") or row.get("symbol") or ""),
-                    "old_ticker": str(row.get("oldSymbol") or row.get("previousSymbol") or ""),
-                    "date":       str(row.get("date") or ""),
-                    "source":     "StockAnalysis",
-                })
-            print(f"   {len(out)} SA changes (NEXT_DATA)")
+                ratio = str(row.get("splitRatio") or row.get("ratio") or "")
+                rtype = str(row.get("type") or "").lower()
+                if "reverse" in rtype or re.search(r'1\s*[:/]\s*\d+', ratio):
+                    out.append({
+                        "ticker":  str(row.get("symbol") or ""),
+                        "company": str(row.get("name") or ""),
+                        "ratio":   ratio,
+                        "date":    str(row.get("date") or ""),
+                    })
+            print(f"   {len(out)} recent reverse splits")
             return out
         except Exception:
             pass
@@ -508,28 +260,138 @@ def scrape_changes_stockanalysis():
         return []
 
     headers = [th.get_text(strip=True).lower() for th in table.find("tr").find_all(["th","td"])]
-    def col_idx(names):
+    def ci(*names):
         for n in names:
-            for i, h in enumerate(headers):
+            for i,h in enumerate(headers):
                 if n in h: return i
         return None
 
-    i_new  = col_idx(["new", "symbol"]) or 0
-    i_old  = col_idx(["old", "previous"]) or 1
-    i_date = col_idx(["date"]) or 2
+    i_sym = ci("symbol","ticker"); i_co = ci("company","name")
+    i_rat = ci("ratio","split");   i_dt = ci("date")
+    i_typ = ci("type")
 
-    results = []
+    out = []
     for row in table.find_all("tr")[1:]:
         cells = [td.get_text(strip=True) for td in row.find_all("td")]
-        if len(cells) >= 2:
-            results.append({
-                "new_ticker": cells[i_new] if i_new < len(cells) else "",
-                "old_ticker": cells[i_old] if i_old < len(cells) else "",
-                "date":       cells[i_date] if i_date < len(cells) else "",
-                "source":     "StockAnalysis",
-            })
-    print(f"   {len(results)} SA changes")
-    return results
+        if not cells: continue
+        gc = lambda idx: cells[idx] if idx is not None and idx < len(cells) else ""
+        ratio = gc(i_rat); rtype = gc(i_typ).lower()
+        if not ("reverse" in rtype or re.search(r'1\s*[:/]\s*\d+', ratio)):
+            continue
+        out.append({"ticker": gc(i_sym), "company": gc(i_co),
+                    "ratio": ratio or "reverse", "date": gc(i_dt)})
+    print(f"   {len(out)} recent reverse splits")
+    return out
+
+# ── 5. Upcoming Splits — TipRanks ────────────────────────────────────────────
+def scrape_splits_upcoming():
+    print("→ TipRanks Upcoming Splits...")
+    try:
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as pw:
+            browser = pw.chromium.launch(headless=True, args=["--no-sandbox","--disable-dev-shm-usage"])
+            page = browser.new_context(user_agent=S.headers["User-Agent"]).new_page()
+            page.goto("https://www.tipranks.com/calendars/stock-splits/upcoming",
+                      wait_until="domcontentloaded", timeout=35000)
+            page.wait_for_timeout(5000)
+            html = page.content()
+            browser.close()
+
+        soup = BeautifulSoup(html, "lxml")
+        table = soup.find("table")
+        if not table:
+            return []
+
+        headers = [th.get_text(strip=True).lower() for th in table.find("tr").find_all(["th","td"])]
+        print(f"   TipRanks headers: {headers}")
+
+        def ci(*names):
+            for n in names:
+                for i,h in enumerate(headers):
+                    if n in h: return i
+            return None
+
+        i_sym = ci("ticker","symbol"); i_co = ci("company","name")
+        i_rat = ci("ratio","split");   i_dt = ci("date","ex-date")
+        i_typ = ci("type")
+
+        out = []
+        for row in table.find_all("tr")[1:]:
+            cells = [td.get_text(strip=True) for td in row.find_all("td")]
+            if not cells: continue
+            gc = lambda idx: cells[idx] if idx is not None and idx < len(cells) else ""
+            rtype = gc(i_typ).lower(); ratio = gc(i_rat)
+            # If we can determine type, skip forward splits
+            if i_typ is not None and rtype and "reverse" not in rtype:
+                continue
+            out.append({"ticker": gc(i_sym), "company": gc(i_co),
+                        "ratio": ratio or rtype or "reverse", "date": gc(i_dt)})
+        print(f"   {len(out)} upcoming")
+        return out
+    except Exception as e:
+        print(f"  TipRanks error: {e}", file=sys.stderr)
+        return []
+
+# ── 6. Ticker Changes ─────────────────────────────────────────────────────────
+def scrape_changes_nasdaq():
+    print("→ NASDAQ Ticker Changes...")
+    r = safe_get(
+        "https://api.nasdaq.com/api/quote/list-type/symbolchangehistory?offset=0&limit=100",
+        headers={**S.headers, "Accept": "application/json", "Origin": "https://www.nasdaq.com"}
+    )
+    if r:
+        try:
+            d = r.json()
+            rows = ((d.get("data") or {}).get("data") or d.get("rows") or [])
+            if rows:
+                out = [{"new_ticker": str(row.get("newSymbol","")),"old_ticker": str(row.get("oldSymbol","")),
+                        "date": str(row.get("dateOfChange","")),"source":"NASDAQ"} for row in rows]
+                print(f"   {len(out)} NASDAQ (API)"); return out
+        except Exception: pass
+
+    r = safe_get("https://www.nasdaq.com/market-activity/stocks/symbol-change-history?page=1&rows_per_page=100")
+    if not r: return []
+    soup = BeautifulSoup(r.text, "lxml")
+    table = soup.find("table")
+    out = []
+    if table:
+        for row in table.find_all("tr")[1:]:
+            cells = [td.get_text(strip=True) for td in row.find_all("td")]
+            if len(cells) >= 2:
+                out.append({"new_ticker":cells[0],"old_ticker":cells[1],
+                            "date":cells[2] if len(cells)>2 else "","source":"NASDAQ"})
+    print(f"   {len(out)} NASDAQ"); return out
+
+def scrape_changes_stockanalysis():
+    print("→ StockAnalysis Ticker Changes...")
+    r = safe_get("https://stockanalysis.com/actions/changes/")
+    if not r: return []
+
+    m = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', r.text, re.S)
+    if m:
+        try:
+            nd = json.loads(m.group(1))
+            rows = nd["props"]["pageProps"].get("data") or []
+            out = [{"new_ticker": str(row.get("newSymbol") or row.get("symbol","")),"old_ticker": str(row.get("oldSymbol","")),"date": str(row.get("date","")),"source":"StockAnalysis"} for row in rows]
+            print(f"   {len(out)} SA"); return out
+        except Exception: pass
+
+    soup = BeautifulSoup(r.text, "lxml")
+    table = soup.find("table")
+    if not table: return []
+    headers = [th.get_text(strip=True).lower() for th in table.find("tr").find_all(["th","td"])]
+    def ci(*names):
+        for n in names:
+            for i,h in enumerate(headers):
+                if n in h: return i
+        return None
+    i_new = ci("new","symbol") or 0; i_old = ci("old","prev") or 1; i_dt = ci("date") or 2
+    out = []
+    for row in table.find_all("tr")[1:]:
+        cells = [td.get_text(strip=True) for td in row.find_all("td")]
+        if len(cells)>=2:
+            out.append({"new_ticker":cells[i_new] if i_new<len(cells) else "","old_ticker":cells[i_old] if i_old<len(cells) else "","date":cells[i_dt] if i_dt<len(cells) else "","source":"StockAnalysis"})
+    print(f"   {len(out)} SA"); return out
 
 # ── 7. DilutionTracker S1 ─────────────────────────────────────────────────────
 def scrape_s1():
@@ -542,231 +404,199 @@ def scrape_s1():
             page = ctx.new_page()
 
             api_data = []
-            def on_response(response):
-                if "api" in response.url and ("s1" in response.url or "filing" in response.url):
-                    try:
-                        api_data.append(response.json())
-                    except Exception:
-                        pass
+            def on_resp(resp):
+                if any(x in resp.url for x in ["api","s1","filing","pending"]):
+                    try: api_data.append(resp.json())
+                    except: pass
+            page.on("response", on_resp)
 
-            page.on("response", on_response)
             page.goto("https://dilutiontracker.com/app/s1",
                       wait_until="domcontentloaded", timeout=35000)
-            page.wait_for_timeout(6000)
+            page.wait_for_timeout(7000)
             html = page.content()
             browser.close()
 
-        # Try API responses
+        # Try intercepted API
         for d in api_data:
-            rows = d.get("data") or d.get("filings") or (d if isinstance(d, list) else [])
-            if rows:
+            rows = d.get("data") or d.get("filings") or d.get("pending") or (d if isinstance(d, list) else [])
+            if rows and isinstance(rows, list) and len(rows) > 0:
                 out = []
-                for row in rows[:300]:
-                    if isinstance(row, dict):
-                        out.append({
-                            "ticker":  str(row.get("ticker") or row.get("symbol") or ""),
-                            "company": str(row.get("company") or row.get("name") or ""),
-                            "date":    str(row.get("date") or row.get("filedDate") or ""),
-                            "type":    str(row.get("type") or "S-1"),
-                        })
+                for row in rows[:500]:
+                    if not isinstance(row, dict): continue
+                    out.append({
+                        "ticker":            str(row.get("ticker") or row.get("symbol") or ""),
+                        "date_s1":           str(row.get("dateOfFirstS1") or row.get("date") or row.get("filedDate") or ""),
+                        "pricing_date":      str(row.get("pricingDate") or row.get("pricing_date") or ""),
+                        "deal_size":         str(row.get("anticipatedDealSize") or row.get("dealSize") or row.get("deal_size") or ""),
+                        "warrant_coverage":  str(row.get("estimatedWarrantCoverage") or row.get("warrantCoverage") or row.get("warrant_coverage") or ""),
+                        "underwriter":       str(row.get("underwriters") or row.get("placementAgents") or row.get("underwriter") or ""),
+                        "float_before":      str(row.get("floatBeforeOffering") or row.get("float") or row.get("sharesFloat") or ""),
+                        "shares_offered":    str(row.get("sharesOffered") or ""),
+                        "exercise_price":    str(row.get("exercisePrice") or row.get("warrantExercisePrice") or ""),
+                    })
                 if out:
                     print(f"   {len(out)} S1 (API)")
                     return out
 
-        # HTML fallback
+        # HTML fallback — read all columns dynamically
         soup = BeautifulSoup(html, "lxml")
         table = soup.find("table")
-        results = []
-        if table:
-            headers = [th.get_text(strip=True).lower() for th in table.find("tr").find_all(["th","td"])]
-            def ci(names):
-                for n in names:
-                    for i, h in enumerate(headers):
-                        if n in h: return i
-                return None
-            i_ticker  = ci(["ticker","symbol"]) or 0
-            i_company = ci(["company","name"]) or 1
-            i_type    = ci(["type","form"])
-            i_date    = ci(["date","filed"]) or 2
+        if not table:
+            print("  DilutionTracker: no table", file=sys.stderr)
+            return []
 
-            for row in table.find_all("tr")[1:]:
-                cells = [td.get_text(strip=True) for td in row.find_all("td")]
-                if len(cells) >= 2:
-                    results.append({
-                        "ticker":  cells[i_ticker] if i_ticker < len(cells) else "",
-                        "company": cells[i_company] if i_company < len(cells) else "",
-                        "type":    cells[i_type] if i_type and i_type < len(cells) else "S-1",
-                        "date":    cells[i_date] if i_date < len(cells) else "",
-                    })
-        print(f"   {len(results)} S1 (HTML)")
-        return results
+        headers = [th.get_text(strip=True) for th in table.find("tr").find_all(["th","td"])]
+        print(f"   DT headers: {headers}")
+
+        def ci(*names):
+            for n in names:
+                for i,h in enumerate(headers):
+                    if n.lower() in h.lower(): return i
+            return None
+
+        i_tick   = ci("Ticker","Symbol")
+        i_date   = ci("Date of first","Filed","Date")
+        i_price  = ci("Pricing Date","Pricing")
+        i_deal   = ci("Deal Size","Anticipated")
+        i_warr   = ci("Warrant Coverage","Estimated")
+        i_under  = ci("Underwriter","Placement","Agent")
+        i_float  = ci("Float","Shares Float")
+        i_soff   = ci("Shares offered","Shares Offered")
+        i_exer   = ci("Exercise price","Exercise Price")
+
+        out = []
+        for row in table.find_all("tr")[1:]:
+            cells = [td.get_text(strip=True) for td in row.find_all("td")]
+            if not cells: continue
+            gc = lambda idx: cells[idx].strip() if idx is not None and idx < len(cells) else ""
+            ticker = gc(i_tick) if i_tick is not None else (cells[0] if cells else "")
+            if not ticker: continue
+            out.append({
+                "ticker":           ticker,
+                "date_s1":          gc(i_date),
+                "pricing_date":     gc(i_price),
+                "deal_size":        gc(i_deal),
+                "warrant_coverage": gc(i_warr),
+                "underwriter":      gc(i_under),
+                "float_before":     gc(i_float),
+                "shares_offered":   gc(i_soff),
+                "exercise_price":   gc(i_exer),
+            })
+        print(f"   {len(out)} S1 (HTML)")
+        return out
 
     except ImportError:
-        print("  Playwright not installed", file=sys.stderr)
-        return []
+        print("  Playwright not installed", file=sys.stderr); return []
     except Exception as e:
-        print(f"  DilutionTracker error: {e}", file=sys.stderr)
-        return []
+        print(f"  DilutionTracker error: {e}", file=sys.stderr); return []
 
 # ── 8. Finviz Insider Buys ────────────────────────────────────────────────────
 def scrape_insiders():
     print("→ Finviz Insider Buys...")
-    r = safe_get("https://finviz.com/insidertrading.ashx?tc=1",
-                 headers={**S.headers, "Referer": "https://finviz.com/"})
-    if not r:
-        r = safe_get("https://finviz.com/insidertrading?tc=1",
-                     headers={**S.headers, "Referer": "https://finviz.com/"})
-    if not r:
-        return []
+    for url in ["https://finviz.com/insidertrading.ashx?tc=1",
+                "https://finviz.com/insidertrading?tc=1"]:
+        r = safe_get(url, headers={**S.headers, "Referer": "https://finviz.com/"})
+        if r: break
+    if not r: return []
 
     soup = BeautifulSoup(r.text, "lxml")
-    # Find insider trading table
     table = None
     for t in soup.find_all("table"):
-        text = t.get_text()
-        if "Purchase" in text or "Sale" in text or "Buy" in text:
-            table = t
-            break
+        if any(x in t.get_text() for x in ["Purchase","Sale","Buy"]):
+            table = t; break
+    if not table: return []
 
-    if not table:
-        print("  Finviz: no table", file=sys.stderr)
-        return []
-
-    results = []
     rows = table.find_all("tr")
-    # Detect header
-    header_idx = 0
-    headers = []
+    headers = []; hi = 0
     for i, row in enumerate(rows):
-        cells = [td.get_text(strip=True) for td in row.find_all(["td","th"])]
+        cells = [c.get_text(strip=True) for c in row.find_all(["td","th"])]
         if "Ticker" in cells or "Owner" in cells:
-            headers = [c.lower() for c in cells]
-            header_idx = i
-            break
+            headers = [c.lower() for c in cells]; hi = i; break
 
-    def ci(names):
+    def ci(*names):
         for n in names:
-            for i, h in enumerate(headers):
+            for i,h in enumerate(headers):
                 if n in h: return i
         return None
 
-    i_ticker = ci(["ticker"]) 
-    i_owner  = ci(["owner","insider"])
-    i_rel    = ci(["relationship","title"])
-    i_date   = ci(["date"])
-    i_trans  = ci(["transaction","type"])
-    i_cost   = ci(["cost","price"])
-    i_shares = ci(["#shares","shares"])
-    i_value  = ci(["value"])
+    i_tick = ci("ticker"); i_own = ci("owner","insider"); i_rel = ci("relationship","title")
+    i_dt = ci("date"); i_tr = ci("transaction","type"); i_cost = ci("cost","price")
+    i_sh = ci("#shares","shares"); i_val = ci("value")
 
-    for row in rows[header_idx+1:]:
+    out = []
+    for row in rows[hi+1:]:
         cells = [td.get_text(strip=True) for td in row.find_all("td")]
-        if len(cells) < 4:
-            continue
+        if len(cells) < 4: continue
+        gc = lambda idx: cells[idx] if idx is not None and idx < len(cells) else ""
+        ticker = gc(i_tick) if i_tick is not None else (cells[1] if len(cells)>1 else "")
+        if not is_ticker(ticker): continue
+        out.append({"ticker":ticker,"owner":gc(i_own),"relationship":gc(i_rel),
+                    "date":gc(i_dt),"transaction":gc(i_tr),"cost":gc(i_cost),
+                    "shares":gc(i_sh),"value":gc(i_val)})
+    print(f"   {len(out)} insider rows")
+    return out
 
-        def gc(idx):
-            return cells[idx] if idx is not None and idx < len(cells) else ""
-
-        ticker = gc(i_ticker) if i_ticker is not None else (cells[1] if len(cells) > 1 else "")
-        if not ticker or not is_ticker(ticker):
-            continue
-
-        results.append({
-            "ticker":       ticker,
-            "owner":        gc(i_owner),
-            "relationship": gc(i_rel),
-            "date":         gc(i_date),
-            "transaction":  gc(i_trans),
-            "cost":         gc(i_cost),
-            "shares":       gc(i_shares),
-            "value":        gc(i_value),
-        })
-
-    print(f"   {len(results)} insider rows")
-    return results
-
-# ── MAIN BUILD ────────────────────────────────────────────────────────────────
+# ── MAIN ──────────────────────────────────────────────────────────────────────
 def build():
     result = {
-        "updated":         datetime.now().strftime("%b %-d, %Y %H:%M UTC"),
-        "regsho_tickers":  [],
-        "regsho_date":     "",
-        "screener":        [],
-        "splits_recent":   [],
-        "splits_upcoming": [],
-        "ticker_changes":  [],
-        "s1_filings":      [],
-        "insiders":        [],
+        "updated":"—","regsho_tickers":[],"regsho_date":"",
+        "screener":[],"splits_recent":[],"splits_upcoming":[],
+        "ticker_changes":[],"s1_filings":[],"insiders":[],
     }
 
-    # RegSHO
     regsho_list, regsho_date = scrape_regsho()
     result["regsho_tickers"] = regsho_list
     result["regsho_date"]    = regsho_date or ""
     regsho_set = set(regsho_list)
 
-    # Screener
     screener = scrape_chartexchange()
     for row in screener:
         row["reg_sho"] = row["ticker"] in regsho_set
 
-    # Float from AskEdgar — fetch for all screener tickers (most accurate source)
+    # AskEdgar float for all screener tickers
     all_tickers = [r["ticker"] for r in screener]
     fmap = scrape_float_askedgar(all_tickers)
     for row in screener:
         if row["ticker"] in fmap:
-            row["float"] = fmap[row["ticker"]]  # AskEdgar overrides ChartExchange
+            row["float"] = fmap[row["ticker"]]
 
-    # S1 filings
     s1 = scrape_s1()
     result["s1_filings"] = s1
-    s1_map = {r["ticker"]: r["date"] for r in s1}
+    s1_map = {r["ticker"]: r for r in s1}
 
-    # Insiders
     insiders = scrape_insiders()
     result["insiders"] = insiders
-    buyer_map = {}
-    for ins in insiders:
-        t = ins["ticker"]
-        if t not in buyer_map:
-            buyer_map[t] = ins["owner"]
+    buyer_map = {ins["ticker"]: ins["owner"] for ins in reversed(insiders)}
 
-    # Enrich screener
     for row in screener:
-        row["s1_date"] = s1_map.get(row["ticker"], "-")
+        s1r = s1_map.get(row["ticker"])
+        row["s1_date"] = s1r["date_s1"] if s1r else "-"
         row["buyer"]   = buyer_map.get(row["ticker"], "-")
 
     result["screener"] = screener
+    result["updated"]  = datetime.now().strftime("%b %-d, %Y %H:%M UTC")
 
-    # Splits
     result["splits_recent"]   = scrape_splits_recent()
     result["splits_upcoming"] = scrape_splits_upcoming()
 
-    # Ticker changes
-    changes_n = scrape_changes_nasdaq()
-    changes_s = scrape_changes_stockanalysis()
     seen, merged = set(), []
-    for row in changes_n + changes_s:
+    for row in scrape_changes_nasdaq() + scrape_changes_stockanalysis():
         key = (row["new_ticker"], row["old_ticker"])
         if key not in seen:
-            seen.add(key)
-            merged.append(row)
+            seen.add(key); merged.append(row)
     result["ticker_changes"] = merged
 
     return result
 
 if __name__ == "__main__":
-    print("=" * 60)
-    print("Short Tracker Scraper")
-    print("=" * 60)
+    print("="*60 + "\nShort Tracker Scraper\n" + "="*60)
     data = build()
-    with open("data.json", "w", encoding="utf-8") as f:
+    with open("data.json","w",encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
-    print("\n✅ data.json written")
-    print(f"   Screener:        {len(data['screener'])}")
-    print(f"   RegSHO:          {len(data['regsho_tickers'])}")
-    print(f"   Recent splits:   {len(data['splits_recent'])}")
-    print(f"   Upcoming splits: {len(data['splits_upcoming'])}")
-    print(f"   Ticker changes:  {len(data['ticker_changes'])}")
-    print(f"   S1 filings:      {len(data['s1_filings'])}")
-    print(f"   Insiders:        {len(data['insiders'])}")
+    print(f"\n✅ data.json written")
+    print(f"   Screener:    {len(data['screener'])}")
+    print(f"   RegSHO:      {len(data['regsho_tickers'])}")
+    print(f"   Splits R/U:  {len(data['splits_recent'])}/{len(data['splits_upcoming'])}")
+    print(f"   Changes:     {len(data['ticker_changes'])}")
+    print(f"   S1:          {len(data['s1_filings'])}")
+    print(f"   Insiders:    {len(data['insiders'])}")
