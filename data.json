@@ -1,5 +1,5 @@
 {
-  "updated": "Mar 13, 2026 16:55 UTC",
+  "updated": "Mar 13, 2026 16:57 UTC",
   "regsho_tickers": [
     "AAPD",
     "AMZD",
@@ -1406,21 +1406,6 @@
       "si_change_pct": "-",
       "reg_sho": false,
       "s1_date": "-",
-      "buyer": "-"
-    },
-    {
-      "ticker": "CMND",
-      "borrow_rate": "-",
-      "avail_shares": "-",
-      "float": "-",
-      "market_cap": "-",
-      "price": "-",
-      "change_pct": "-",
-      "volume": "-",
-      "short_int_pct": "-",
-      "si_change_pct": "-",
-      "reg_sho": false,
-      "s1_date": "2023-03-27",
       "buyer": "-"
     },
     {
