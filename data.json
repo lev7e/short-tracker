@@ -1,5 +1,5 @@
 {
-  "updated": "Mar 13, 2026 16:44 UTC",
+  "updated": "Mar 13, 2026 16:48 UTC",
   "regsho_tickers": [
     "AAPD",
     "AMZD",
@@ -1724,6 +1724,21 @@
       "buyer": "-"
     },
     {
+      "ticker": "PAVS",
+      "borrow_rate": "-",
+      "avail_shares": "-",
+      "float": "-",
+      "market_cap": "-",
+      "price": "-",
+      "change_pct": "-",
+      "volume": "-",
+      "short_int_pct": "-",
+      "si_change_pct": "-",
+      "reg_sho": false,
+      "s1_date": "-",
+      "buyer": "-"
+    },
+    {
       "ticker": "ACXP",
       "borrow_rate": "-",
       "avail_shares": "-",
@@ -2081,36 +2096,6 @@
       "si_change_pct": "-",
       "reg_sho": false,
       "s1_date": "2024-09-30",
-      "buyer": "-"
-    },
-    {
-      "ticker": "PAVS",
-      "borrow_rate": "-",
-      "avail_shares": "-",
-      "float": "-",
-      "market_cap": "-",
-      "price": "-",
-      "change_pct": "-",
-      "volume": "-",
-      "short_int_pct": "-",
-      "si_change_pct": "-",
-      "reg_sho": false,
-      "s1_date": "-",
-      "buyer": "-"
-    },
-    {
-      "ticker": "ZYBT",
-      "borrow_rate": "-",
-      "avail_shares": "-",
-      "float": "-",
-      "market_cap": "-",
-      "price": "-",
-      "change_pct": "-",
-      "volume": "-",
-      "short_int_pct": "-",
-      "si_change_pct": "-",
-      "reg_sho": false,
-      "s1_date": "-",
       "buyer": "-"
     },
     {
@@ -2909,7 +2894,7 @@
       "buyer": "-"
     },
     {
-      "ticker": "ARTL",
+      "ticker": "FLYX",
       "borrow_rate": "-",
       "avail_shares": "-",
       "float": "-",
@@ -2924,7 +2909,7 @@
       "buyer": "-"
     },
     {
-      "ticker": "FLYX",
+      "ticker": "ARTL",
       "borrow_rate": "-",
       "avail_shares": "-",
       "float": "-",
