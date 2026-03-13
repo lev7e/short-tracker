@@ -1,6 +1,45 @@
 [
   {
     "form": "S-1",
+    "ticker": "",
+    "company": "Medical 21, Inc.",
+    "filed_date": "2026-03-12",
+    "edgar_url": "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&company=Medical%2021%2C%20Inc.&type=S-1&dateb=&owner=include&count=10",
+    "float": null,
+    "diluted_float": null,
+    "float_date": "",
+    "short_float_pct": null,
+    "reg_sho": "\u274c",
+    "in_summary": false
+  },
+  {
+    "form": "S-1",
+    "ticker": "",
+    "company": "TIAA REAL ESTATE ACCOUNT",
+    "filed_date": "2026-03-12",
+    "edgar_url": "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&company=TIAA%20REAL%20ESTATE%20ACCOUNT&type=S-1&dateb=&owner=include&count=10",
+    "float": null,
+    "diluted_float": null,
+    "float_date": "",
+    "short_float_pct": null,
+    "reg_sho": "\u274c",
+    "in_summary": false
+  },
+  {
+    "form": "S-1",
+    "ticker": "BHAV",
+    "company": "BHAV Acquisition Corp",
+    "filed_date": "2026-03-12",
+    "edgar_url": "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&company=BHAV%20Acquisition%20Corp&type=S-1&dateb=&owner=include&count=10",
+    "float": null,
+    "diluted_float": null,
+    "float_date": "",
+    "short_float_pct": null,
+    "reg_sho": "\u274c",
+    "in_summary": false
+  },
+  {
+    "form": "S-1",
     "ticker": "OFG",
     "company": "OFG BANCORP",
     "filed_date": "2026-03-11",
@@ -1261,7 +1300,7 @@
     "in_summary": false
   },
   {
-    "form": "S-1",
+    "form": "S-1/A",
     "ticker": "GLEI",
     "company": "Galaxy Enterprises Inc. /WY/",
     "filed_date": "2026-02-20",
@@ -1274,24 +1313,11 @@
     "in_summary": false
   },
   {
-    "form": "S-1",
+    "form": "S-1/A",
     "ticker": "MZYX",
     "company": "MOZAYYX Acquisition Corp.",
     "filed_date": "2026-02-20",
     "edgar_url": "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&company=MOZAYYX%20Acquisition%20Corp.&type=S-1&dateb=&owner=include&count=10",
-    "float": null,
-    "diluted_float": null,
-    "float_date": "",
-    "short_float_pct": null,
-    "reg_sho": "\u274c",
-    "in_summary": false
-  },
-  {
-    "form": "S-1",
-    "ticker": "",
-    "company": "RWB Health Inc.",
-    "filed_date": "2026-02-20",
-    "edgar_url": "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&company=RWB%20Health%20Inc.&type=S-1&dateb=&owner=include&count=10",
     "float": null,
     "diluted_float": null,
     "float_date": "",
@@ -1604,32 +1630,6 @@
     "company": "Figure Technology Solutions, Inc.",
     "filed_date": "2026-02-13",
     "edgar_url": "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&company=Figure%20Technology%20Solutions%2C%20Inc.&type=S-1&dateb=&owner=include&count=10",
-    "float": null,
-    "diluted_float": null,
-    "float_date": "",
-    "short_float_pct": null,
-    "reg_sho": "\u274c",
-    "in_summary": false
-  },
-  {
-    "form": "S-1/A",
-    "ticker": "",
-    "company": "Brava Acquisition Corp",
-    "filed_date": "2026-02-13",
-    "edgar_url": "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&company=Brava%20Acquisition%20Corp&type=S-1&dateb=&owner=include&count=10",
-    "float": null,
-    "diluted_float": null,
-    "float_date": "",
-    "short_float_pct": null,
-    "reg_sho": "\u274c",
-    "in_summary": false
-  },
-  {
-    "form": "S-1/A",
-    "ticker": "",
-    "company": "21Shares Hyperliquid ETF",
-    "filed_date": "2026-02-13",
-    "edgar_url": "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&company=21Shares%20Hyperliquid%20ETF&type=S-1&dateb=&owner=include&count=10",
     "float": null,
     "diluted_float": null,
     "float_date": "",
