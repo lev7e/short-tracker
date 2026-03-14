@@ -1,9 +1,22 @@
 #!/usr/bin/env python3
 """Short Tracker - Multi-Source Scraper"""
 
-import requests, json, re, time, sys
+import requests, json, re, time, sys, os
 from datetime import datetime, date, timedelta
 from bs4 import BeautifulSoup
+
+# ── Filters (env vars from GitHub Actions inputs) ─────────────────────────────
+def _env(key, default):
+    val = os.environ.get(key, "").strip()
+    return val if val else default
+
+FILTER_FLOAT_MAX  = _env("FILTER_FLOAT_MAX",  "5000000")
+FILTER_PRICE_MIN  = _env("FILTER_PRICE_MIN",  "0.8")
+FILTER_PRICE_MAX  = _env("FILTER_PRICE_MAX",  "6")
+FILTER_AVAIL_MAX  = _env("FILTER_AVAIL_MAX",  "100000")
+FILTER_BORROW_MIN = _env("FILTER_BORROW_MIN", "0")
+
+print(f"Filters: float<{FILTER_FLOAT_MAX}  price${FILTER_PRICE_MIN}-${FILTER_PRICE_MAX}  avail<{FILTER_AVAIL_MAX}  borrow>{FILTER_BORROW_MIN}%")
 
 S = requests.Session()
 S.headers.update({
@@ -71,14 +84,22 @@ def scrape_chartexchange():
     print("→ ChartExchange Screener...")
     results = []
     page = 1
+
+    # Build price filter: ChartExchange format  %3C = <  %3E = >
+    price_filter = f"%3C{FILTER_PRICE_MAX},%3E{FILTER_PRICE_MIN}"
+    # Borrow rate filter
+    borrow_filter = f"%3E{FILTER_BORROW_MIN}" if float(FILTER_BORROW_MIN) > 0 else ""
+    borrow_param  = f"&borrow_fee_rate_ib={borrow_filter}" if borrow_filter else ""
+
     base = (
         "https://chartexchange.com/screener/?page={page}"
         "&equity_type=ad,cs"
         "&exchange=BATS,NASDAQ,NYSE,NYSEAMERICAN"
         "&currency=USD"
-        "&shares_float=%3C5000000"
-        "&reg_price=%3C6,%3E0.8"
-        "&borrow_fee_avail_ib=%3C100000"
+        f"&shares_float=%3C{FILTER_FLOAT_MAX}"
+        f"&reg_price={price_filter}"
+        f"&borrow_fee_avail_ib=%3C{FILTER_AVAIL_MAX}"
+        f"{borrow_param}"
         "&per_page=100"
         "&view_cols=display,borrow_fee_rate_ib,borrow_fee_avail_ib,shares_float,"
         "market_cap,reg_price,reg_change_pct,reg_volume,10_day_avg_vol,"
@@ -540,6 +561,7 @@ def scrape_insiders():
 def build():
     result = {
         "updated":"—","regsho_tickers":[],"regsho_date":"",
+        "filters":{"float_max":FILTER_FLOAT_MAX,"price_min":FILTER_PRICE_MIN,"price_max":FILTER_PRICE_MAX,"avail_max":FILTER_AVAIL_MAX,"borrow_min":FILTER_BORROW_MIN},
         "screener":[],"splits_recent":[],"splits_upcoming":[],
         "ticker_changes":[],"s1_filings":[],"insiders":[],
     }
