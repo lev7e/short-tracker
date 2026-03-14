@@ -1,9 +1,30 @@
 name: Scrape Data
 
 on:
-  workflow_dispatch:   # Manuel tetikleme (GitHub UI'dan veya API'den)
+  workflow_dispatch:
+    inputs:
+      float_max:
+        description: 'Float Max (shares, e.g. 5000000)'
+        required: false
+        default: '5000000'
+      price_min:
+        description: 'Price Min (e.g. 0.8)'
+        required: false
+        default: '0.8'
+      price_max:
+        description: 'Price Max (e.g. 6)'
+        required: false
+        default: '6'
+      avail_max:
+        description: 'Available Shares Max (e.g. 100000)'
+        required: false
+        default: '100000'
+      borrow_min:
+        description: 'Min Borrow Rate % (e.g. 0)'
+        required: false
+        default: '0'
   schedule:
-    - cron: "0 14 * * 1-5"   # Her hafta içi 14:00 UTC (09:00 EST)
+    - cron: "0 14 * * 1-5"
 
 permissions:
   contents: write
@@ -24,10 +45,16 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install requests beautifulsoup4 lxml playwright
+          pip install -r requirements.txt
           playwright install chromium --with-deps
 
       - name: Run scraper
+        env:
+          FILTER_FLOAT_MAX:  ${{ github.event.inputs.float_max  || '5000000' }}
+          FILTER_PRICE_MIN:  ${{ github.event.inputs.price_min  || '0.8' }}
+          FILTER_PRICE_MAX:  ${{ github.event.inputs.price_max  || '6' }}
+          FILTER_AVAIL_MAX:  ${{ github.event.inputs.avail_max  || '100000' }}
+          FILTER_BORROW_MIN: ${{ github.event.inputs.borrow_min || '0' }}
         run: python scraper.py
 
       - name: Commit data.json
