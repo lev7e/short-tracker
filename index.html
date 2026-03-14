@@ -134,6 +134,88 @@ td{padding:7px 12px;font-family:var(--mono);font-size:12px;color:var(--text);}
   #global-search{width:120px;}
   td,thead th{padding:5px 8px;font-size:11px;}
 }
+
+/* ── FILTER BAR ── */
+.filter-bar {
+  background: var(--s2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-bottom: 12px;
+}
+.filter-bar-title {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+.filter-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: flex-end;
+}
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 110px;
+}
+.filter-group label {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--muted);
+  letter-spacing: .5px;
+}
+.filter-group input {
+  background: var(--s1);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 6px 9px;
+  border-radius: 5px;
+  font-family: var(--mono);
+  font-size: 12px;
+  outline: none;
+  width: 110px;
+  transition: border-color .15s;
+}
+.filter-group input:focus { border-color: var(--accent); }
+.filter-actions {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  padding-bottom: 1px;
+}
+.btn-apply {
+  background: rgba(63,185,80,.12);
+  border-color: rgba(63,185,80,.35);
+  color: #7ee787;
+  font-weight: 700;
+}
+.btn-apply:hover { background: rgba(63,185,80,.2); border-color: #3fb950; }
+.btn-apply:disabled { opacity: .4; cursor: not-allowed; }
+.btn-reset-f {
+  background: transparent;
+  border-color: var(--border);
+  color: var(--muted);
+}
+.btn-reset-f:hover { border-color: var(--muted); color: var(--text); }
+.filter-status {
+  margin-top: 8px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+  min-height: 16px;
+}
+.filter-status.ok    { color: var(--green); }
+.filter-status.err   { color: var(--red); }
+.filter-status.spin  { color: var(--yellow); }
+@media(max-width:640px){
+  .filter-fields { gap: 8px; }
+  .filter-group input { width: 90px; }
+}
 </style>
 </head>
 <body>
@@ -154,19 +236,52 @@ td{padding:7px 12px;font-family:var(--mono);font-size:12px;color:var(--text);}
 <div id="tab-bar">
   <button class="tab active" onclick="switchTab('screener',this)">SCREENER <span class="tab-badge" id="badge-screener">0</span></button>
   <button class="tab" onclick="switchTab('regsho',this)">REG SHO <span class="tab-badge" id="badge-regsho">0</span></button>
-  <button class="tab" onclick="switchTab('splits',this)">SPLIT <span class="tab-badge" id="badge-splits">0</span></button>
-  <button class="tab" onclick="switchTab('changes',this)">TICKER CHANGE <span class="tab-badge" id="badge-changes">0</span></button>
-  <button class="tab" onclick="switchTab('s1',this)">S-1 <span class="tab-badge" id="badge-s1">0</span></button>
-  <button class="tab" onclick="switchTab('insiders',this)">INSIDER <span class="tab-badge" id="badge-insiders">0</span></button>
+  <button class="tab" onclick="switchTab('splits',this)">SPLITS <span class="tab-badge" id="badge-splits">0</span></button>
+  <button class="tab" onclick="switchTab('changes',this)">TICKER CHANGES <span class="tab-badge" id="badge-changes">0</span></button>
+  <button class="tab" onclick="switchTab('s1',this)">S-1 FİLİNGS <span class="tab-badge" id="badge-s1">0</span></button>
+  <button class="tab" onclick="switchTab('insiders',this)">INSIDERS <span class="tab-badge" id="badge-insiders">0</span></button>
 </div>
 
 <main>
 
 <!-- SCREENER -->
 <div class="tab-content active" id="tab-screener">
+
+  <!-- Filter Bar -->
+  <div class="filter-bar" id="filter-bar">
+    <div class="filter-bar-title">SCREENER FİLTRELERİ</div>
+    <div class="filter-fields">
+      <div class="filter-group">
+        <label>Float Max</label>
+        <input type="number" id="f-float-max" value="5000000" min="0" step="100000">
+      </div>
+      <div class="filter-group">
+        <label>Price Min ($)</label>
+        <input type="number" id="f-price-min" value="0.8" min="0" step="0.1">
+      </div>
+      <div class="filter-group">
+        <label>Price Max ($)</label>
+        <input type="number" id="f-price-max" value="6" min="0" step="0.5">
+      </div>
+      <div class="filter-group">
+        <label>Avail Shares Max</label>
+        <input type="number" id="f-avail-max" value="100000" min="0" step="10000">
+      </div>
+      <div class="filter-group">
+        <label>Borrow Rate Min (%)</label>
+        <input type="number" id="f-borrow-min" value="0" min="0" step="10">
+      </div>
+      <div class="filter-actions">
+        <button class="btn btn-apply" id="apply-btn" onclick="applyFilters()">&#9654; Uygula &amp; Yenile</button>
+        <button class="btn btn-reset-f" onclick="resetFilters()">&#8635; Sifirla</button>
+      </div>
+    </div>
+    <div id="filter-status" class="filter-status"></div>
+  </div>
+
   <div class="panel">
     <div class="panel-head">
-      <span class="panel-title">BORROW SCREENER — FLOAT &lt;5M · PRICE $0.8–$6 · AVAIL &lt;100K</span>
+      <span class="panel-title" id="screener-title">BORROW SCREENER — FLOAT &lt;5M · PRICE $0.8–$6 · AVAIL &lt;100K</span>
       <div class="panel-meta">
         <span id="screener-count">0 rows</span>
         <input class="panel-search" type="text" placeholder="Filtrele…" oninput="filterTable('t-screener',this.value)">
@@ -177,7 +292,7 @@ td{padding:7px 12px;font-family:var(--mono);font-size:12px;color:var(--text);}
         <thead><tr>
           <th onclick="sortTbl('t-screener',0)">Ticker</th>
           <th onclick="sortTbl('t-screener',1)">Borrow Rate</th>
-          <th onclick="sortTbl('t-screener',2)">Shares</th>
+          <th onclick="sortTbl('t-screener',2)">Avail Shares</th>
           <th onclick="sortTbl('t-screener',3)">Float</th>
           <th onclick="sortTbl('t-screener',4)">Price</th>
           <th onclick="sortTbl('t-screener',5)">Chg%</th>
@@ -295,7 +410,7 @@ td{padding:7px 12px;font-family:var(--mono);font-size:12px;color:var(--text);}
 <div class="tab-content" id="tab-s1">
   <div class="panel">
     <div class="panel-head">
-      <span class="panel-title">S-1 / S-1A — DilutionTracker</span>
+      <span class="panel-title">S-1 / S-1A FİLİNGS — DilutionTracker</span>
       <div class="panel-meta">
         <span id="s1-count">0</span>
         <input class="panel-search" type="text" placeholder="Filtrele…" oninput="filterTable('t-s1',this.value)">
@@ -394,6 +509,7 @@ async function loadData(force=false) {
     DATA = await r.json();
     renderAll();
     setStatus('ok','Güncellendi: '+(DATA.updated||'—'));
+    onDataLoaded();
   } catch(e) {
     setStatus('err','Veri yüklenemedi');
   }
@@ -648,7 +764,136 @@ function saveSettings(){
 }
 document.getElementById('settings-modal').addEventListener('click',e=>{if(e.target.id==='settings-modal')closeSettings();});
 
+
+// ── FILTERS ───────────────────────────────────────────────────────────────────
+function fmtFloat(n) {
+  if (n >= 1e9) return (n/1e9).toFixed(1)+'B';
+  if (n >= 1e6) return (n/1e6).toFixed(1)+'M';
+  if (n >= 1e3) return (n/1e3).toFixed(0)+'K';
+  return String(n);
+}
+
+function updateScreenerTitle() {
+  const fm  = parseFloat(document.getElementById('f-float-max').value)  || 5000000;
+  const pmin= parseFloat(document.getElementById('f-price-min').value)  || 0.8;
+  const pmax= parseFloat(document.getElementById('f-price-max').value)  || 6;
+  const am  = parseFloat(document.getElementById('f-avail-max').value)  || 100000;
+  const bmin= parseFloat(document.getElementById('f-borrow-min').value) || 0;
+  let title = `BORROW SCREENER — FLOAT <${fmtFloat(fm)} · PRICE $${pmin}–$${pmax} · AVAIL <${fmtFloat(am)}`;
+  if (bmin > 0) title += ` · BORROW >${bmin}%`;
+  document.getElementById('screener-title').textContent = title;
+}
+
+// Restore saved filters on load
+function loadSavedFilters() {
+  try {
+    const saved = JSON.parse(sessionStorage.getItem('st_filters') || '{}');
+    if (saved.float_max)  document.getElementById('f-float-max').value  = saved.float_max;
+    if (saved.price_min)  document.getElementById('f-price-min').value  = saved.price_min;
+    if (saved.price_max)  document.getElementById('f-price-max').value  = saved.price_max;
+    if (saved.avail_max)  document.getElementById('f-avail-max').value  = saved.avail_max;
+    if (saved.borrow_min) document.getElementById('f-borrow-min').value = saved.borrow_min;
+  } catch(e) {}
+  updateScreenerTitle();
+}
+
+// Also read active filters from loaded data.json
+function syncFiltersFromData() {
+  if (!DATA || !DATA.filters) return;
+  const f = DATA.filters;
+  if (f.float_max)  document.getElementById('f-float-max').value  = f.float_max;
+  if (f.price_min)  document.getElementById('f-price-min').value  = f.price_min;
+  if (f.price_max)  document.getElementById('f-price-max').value  = f.price_max;
+  if (f.avail_max)  document.getElementById('f-avail-max').value  = f.avail_max;
+  if (f.borrow_min) document.getElementById('f-borrow-min').value = f.borrow_min;
+  updateScreenerTitle();
+}
+
+function setFilterStatus(msg, cls) {
+  const el = document.getElementById('filter-status');
+  el.textContent = msg;
+  el.className = 'filter-status ' + (cls||'');
+}
+
+async function applyFilters() {
+  if (!CFG.owner || !CFG.repo || !CFG.token) {
+    openSettings();
+    setFilterStatus('GitHub ayarları gerekli — ⚙ butonuna bas.', 'err');
+    return;
+  }
+
+  const filters = {
+    float_max:  document.getElementById('f-float-max').value  || '5000000',
+    price_min:  document.getElementById('f-price-min').value  || '0.8',
+    price_max:  document.getElementById('f-price-max').value  || '6',
+    avail_max:  document.getElementById('f-avail-max').value  || '100000',
+    borrow_min: document.getElementById('f-borrow-min').value || '0',
+  };
+
+  // Save to session
+  try { sessionStorage.setItem('st_filters', JSON.stringify(filters)); } catch(e) {}
+
+  document.getElementById('apply-btn').disabled = true;
+  setFilterStatus('Workflow başlatılıyor…', 'spin');
+
+  try {
+    const res = await fetch(
+      `https://api.github.com/repos/${CFG.owner}/${CFG.repo}/actions/workflows/scrape.yml/dispatches`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Bearer ' + CFG.token,
+          'Accept': 'application/vnd.github+json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ref: 'main',
+          inputs: {
+            float_max:  filters.float_max,
+            price_min:  filters.price_min,
+            price_max:  filters.price_max,
+            avail_max:  filters.avail_max,
+            borrow_min: filters.borrow_min,
+          }
+        })
+      }
+    );
+
+    if (res.status === 204) {
+      setFilterStatus('Çalışıyor… (~2–4 dk) Veri gelince otomatik güncellenir.', 'spin');
+      setStatus('loading', 'Workflow çalışıyor…');
+      pollWorkflow();
+    } else {
+      const e = await res.json().catch(()=>({}));
+      setFilterStatus('Hata: ' + (e.message || res.status), 'err');
+      document.getElementById('apply-btn').disabled = false;
+    }
+  } catch(e) {
+    setFilterStatus('Bağlantı hatası', 'err');
+    document.getElementById('apply-btn').disabled = false;
+  }
+}
+
+function resetFilters() {
+  document.getElementById('f-float-max').value  = '5000000';
+  document.getElementById('f-price-min').value  = '0.8';
+  document.getElementById('f-price-max').value  = '6';
+  document.getElementById('f-avail-max').value  = '100000';
+  document.getElementById('f-borrow-min').value = '0';
+  updateScreenerTitle();
+  try { sessionStorage.removeItem('st_filters'); } catch(e) {}
+  setFilterStatus('Filtreler sıfırlandı.', '');
+}
+
+// Re-enable apply btn and clear status after data loads
+function onDataLoaded() {
+  document.getElementById('apply-btn').disabled = false;
+  setFilterStatus('', '');
+  syncFiltersFromData();
+}
+
 // ── INIT ──────────────────────────────────────────────────────────────────────
+loadSavedFilters();
 loadData();
 </script>
 </body>
