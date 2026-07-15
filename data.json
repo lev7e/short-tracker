@@ -1,11 +1,10 @@
 {
-  "updated": "Jul 14, 2026 15:21 UTC",
+  "updated": "Jul 15, 2026 15:24 UTC",
   "regsho_tickers": [
     "AAPD",
     "AAPG",
     "ALOY",
     "AMDD",
-    "AMGR",
     "AMZD",
     "AVS",
     "AVXX",
@@ -15,9 +14,10 @@
     "BTOG",
     "BYAH",
     "CLRO",
+    "CLSM",
     "COSM",
     "CRML",
-    "CRVO",
+    "DUKH",
     "FAAR",
     "FABC",
     "FAMI",
@@ -53,7 +53,7 @@
     "RGTZ",
     "RKLX",
     "RKLZ",
-    "SATA",
+    "SILO",
     "SKYQ",
     "SMCX",
     "SMCZ",
@@ -65,12 +65,13 @@
     "TSDD",
     "TSLR",
     "USDE",
+    "VBCB",
     "WHLR",
     "WYHG",
     "YHC",
     "ZCMD"
   ],
-  "regsho_date": "Jul 13, 2026",
+  "regsho_date": "Jul 14, 2026",
   "filters": {
     "float_max": "5000000",
     "price_min": "0.8",
@@ -80,6 +81,12 @@
   },
   "screener": [],
   "splits_recent": [
+    {
+      "ticker": "GNPX",
+      "company": "Genprex Inc",
+      "ratio": "1 for 22",
+      "date": "Jul 16, 2026"
+    },
     {
       "ticker": "YXT",
       "company": "Yxtcom Group Holding Ltd.",
@@ -2919,140 +2926,7 @@
       "date": "Sep 25, 2025"
     }
   ],
-  "splits_upcoming": [
-    {
-      "ticker": "",
-      "company": "YXT.COM Group Holding Limited Sponsored ADR",
-      "ratio": "1 for 10.00",
-      "date": "Jul 14, 2026"
-    },
-    {
-      "ticker": "",
-      "company": "Lion Group Holding Ltd.",
-      "ratio": "1 for 9.00",
-      "date": "Jul 14, 2026"
-    },
-    {
-      "ticker": "",
-      "company": "Coloured Ties Capital Inc.",
-      "ratio": "1 for 3.00",
-      "date": "Jul 14, 2026"
-    },
-    {
-      "ticker": "",
-      "company": "707 Cayman Holdings Limited",
-      "ratio": "1 for 12.00",
-      "date": "Jul 14, 2026"
-    },
-    {
-      "ticker": "",
-      "company": "Direxion Daily Semiconductor Bear 3x Shares",
-      "ratio": "1 for 10.00",
-      "date": "Jul 15, 2026"
-    },
-    {
-      "ticker": "",
-      "company": "Direxion Daily S&P Oil & Gas Exp. & Prod. Bear 2X Shares",
-      "ratio": "1 for 10.00",
-      "date": "Jul 15, 2026"
-    },
-    {
-      "ticker": "",
-      "company": "Direxion Daily Small Cap Bear 3x Shares",
-      "ratio": "1 for 10.00",
-      "date": "Jul 15, 2026"
-    },
-    {
-      "ticker": "",
-      "company": "Direxion Daily Technology Bear 3X Shares",
-      "ratio": "1 for 10.00",
-      "date": "Jul 15, 2026"
-    },
-    {
-      "ticker": "",
-      "company": "Direxion Daily GOOGL Bear 1X Shares ETF",
-      "ratio": "1 for 10.00",
-      "date": "Jul 15, 2026"
-    },
-    {
-      "ticker": "",
-      "company": "Direxion Daily AI and Big Data Bear 2X Shares",
-      "ratio": "1 for 10.00",
-      "date": "Jul 15, 2026"
-    },
-    {
-      "ticker": "",
-      "company": "Direxion Daily AMD Bear 1X Shares",
-      "ratio": "1 for 10.00",
-      "date": "Jul 15, 2026"
-    },
-    {
-      "ticker": "",
-      "company": "Stellar Resources Limited",
-      "ratio": "1 for 10.00",
-      "date": "Jul 16, 2026"
-    },
-    {
-      "ticker": "",
-      "company": "FBR Limited",
-      "ratio": "1 for 50.00",
-      "date": "Jul 17, 2026"
-    },
-    {
-      "ticker": "",
-      "company": "Cheche Group Inc. Class A",
-      "ratio": "1 for 35.00",
-      "date": "Jul 20, 2026"
-    },
-    {
-      "ticker": "",
-      "company": "Tradr 2X Long PONY Daily ETF",
-      "ratio": "1 for 5.00",
-      "date": "Jul 21, 2026"
-    },
-    {
-      "ticker": "",
-      "company": "Tradr 2X Short NBIS Daily ETF",
-      "ratio": "1 for 3.00",
-      "date": "Jul 21, 2026"
-    },
-    {
-      "ticker": "",
-      "company": "Tradr 2X Short IREN Daily ETF",
-      "ratio": "1 for 3.00",
-      "date": "Jul 21, 2026"
-    },
-    {
-      "ticker": "",
-      "company": "Tradr 2X Short SNDK Daily ETF",
-      "ratio": "1 for 10.00",
-      "date": "Jul 21, 2026"
-    },
-    {
-      "ticker": "",
-      "company": "Cango Inc",
-      "ratio": "1 for 10.00",
-      "date": "Jul 21, 2026"
-    },
-    {
-      "ticker": "",
-      "company": "Trinity Biotech",
-      "ratio": "1 for 30.00",
-      "date": "Jul 24, 2026"
-    },
-    {
-      "ticker": "",
-      "company": "Steakholder Foods Ltd.",
-      "ratio": "1 for 3.00",
-      "date": "Jul 27, 2026"
-    },
-    {
-      "ticker": "",
-      "company": "Suncorp Technologies",
-      "ratio": "1 for 5.00",
-      "date": "Aug 05, 2026"
-    }
-  ],
+  "splits_upcoming": [],
   "ticker_changes": [
     {
       "new_ticker": "PMA",
@@ -4504,12 +4378,6 @@
       "new_ticker": "VWAV",
       "old_ticker": "BNIX",
       "date": "VWAV",
-      "source": "StockAnalysis"
-    },
-    {
-      "new_ticker": "PFSA",
-      "old_ticker": "NVAC",
-      "date": "PFSA",
       "source": "StockAnalysis"
     }
   ],
