@@ -1,42 +1,42 @@
 {
-  "updated": "Jul 15, 2026 15:24 UTC",
+  "updated": "Jul 16, 2026 15:36 UTC",
   "regsho_tickers": [
     "AAPD",
-    "AAPG",
     "ALOY",
     "AMDD",
     "AMZD",
+    "ANEL",
     "AVS",
     "AVXX",
     "BJDX",
     "BMNG",
-    "BNZI",
     "BTOG",
-    "BYAH",
     "CLRO",
     "CLSM",
     "COSM",
     "CRML",
     "DUKH",
-    "FAAR",
     "FABC",
     "FAMI",
+    "GDC",
     "GGLS",
     "HKIT",
     "INHD",
     "IONZ",
+    "IQMX",
     "IVF",
     "JEM",
     "JZ",
+    "KITT",
     "LFS",
     "LGHL",
     "LHSW",
-    "LIMN",
     "LUCY",
     "LWAY",
     "MPG",
     "MSTX",
     "MUD",
+    "NGHT",
     "NVCT",
     "NVD",
     "NVVE",
@@ -46,7 +46,6 @@
     "PCLA",
     "PECEW",
     "QBTZ",
-    "QTEX",
     "RCAX",
     "RCKTW",
     "RGTX",
@@ -71,7 +70,7 @@
     "YHC",
     "ZCMD"
   ],
-  "regsho_date": "Jul 14, 2026",
+  "regsho_date": "Jul 15, 2026",
   "filters": {
     "float_max": "5000000",
     "price_min": "0.8",
@@ -2926,7 +2925,80 @@
       "date": "Sep 25, 2025"
     }
   ],
-  "splits_upcoming": [],
+  "splits_upcoming": [
+    {
+      "ticker": "",
+      "company": "Stellar Resources Limited",
+      "ratio": "1 for 10.00",
+      "date": "Jul 16, 2026"
+    },
+    {
+      "ticker": "",
+      "company": "FBR Limited",
+      "ratio": "1 for 50.00",
+      "date": "Jul 17, 2026"
+    },
+    {
+      "ticker": "",
+      "company": "Cheche Group Inc. Class A",
+      "ratio": "1 for 35.00",
+      "date": "Jul 20, 2026"
+    },
+    {
+      "ticker": "",
+      "company": "Tradr 2X Short IREN Daily ETF",
+      "ratio": "1 for 3.00",
+      "date": "Jul 21, 2026"
+    },
+    {
+      "ticker": "",
+      "company": "Tradr 2X Short SNDK Daily ETF",
+      "ratio": "1 for 10.00",
+      "date": "Jul 21, 2026"
+    },
+    {
+      "ticker": "",
+      "company": "Tradr 2X Long PONY Daily ETF",
+      "ratio": "1 for 5.00",
+      "date": "Jul 21, 2026"
+    },
+    {
+      "ticker": "",
+      "company": "Tradr 2X Short NBIS Daily ETF",
+      "ratio": "1 for 3.00",
+      "date": "Jul 21, 2026"
+    },
+    {
+      "ticker": "",
+      "company": "Cango Inc",
+      "ratio": "1 for 10.00",
+      "date": "Jul 21, 2026"
+    },
+    {
+      "ticker": "",
+      "company": "Trinity Biotech",
+      "ratio": "1 for 30.00",
+      "date": "Jul 24, 2026"
+    },
+    {
+      "ticker": "",
+      "company": "Apimeds Pharmaceuticals US, Inc.",
+      "ratio": "1 for 10.00",
+      "date": "Jul 24, 2026"
+    },
+    {
+      "ticker": "",
+      "company": "Steakholder Foods Ltd.",
+      "ratio": "1 for 3.00",
+      "date": "Jul 27, 2026"
+    },
+    {
+      "ticker": "",
+      "company": "Suncorp Technologies",
+      "ratio": "1 for 5.00",
+      "date": "Aug 05, 2026"
+    }
+  ],
   "ticker_changes": [
     {
       "new_ticker": "PMA",
@@ -4372,12 +4444,6 @@
       "new_ticker": "PEW",
       "old_ticker": "CLBR",
       "date": "PEW",
-      "source": "StockAnalysis"
-    },
-    {
-      "new_ticker": "VWAV",
-      "old_ticker": "BNIX",
-      "date": "VWAV",
       "source": "StockAnalysis"
     }
   ],
